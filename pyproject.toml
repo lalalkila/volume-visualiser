@@ -1,0 +1,14 @@
+[project]
+name = "volume-visualiser"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "faicons>=0.2.2",
+    "numpy>=2.2.5",
+    "pandas>=2.2.3",
+    "plotly>=6.0.1",
+    "seaborn>=0.13.2",
+    "shiny>=1.4.0",
+]
