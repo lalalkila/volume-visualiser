@@ -1,96 +1,95 @@
 import seaborn as sns
 from faicons import icon_svg
+import pandas as pd
+import numpy as np
 
 # Import data from shared.py
 from shared import app_dir, df
 
 from shiny import App, reactive, render, ui
 
+data = reactive.Value(df)
+
 app_ui = ui.page_sidebar(
     ui.sidebar(
-        ui.input_slider("mass", "Mass", 2000, 6000, 6000),
-        ui.input_checkbox_group(
-            "species",
-            "Species",
-            ["Adelie", "Gentoo", "Chinstrap"],
-            selected=["Adelie", "Gentoo", "Chinstrap"],
+        ui.input_file("file", "Upload a CSV file", accept=".csv"),
+        ui.input_select(
+            "timeid",
+            "Time ID",
+            [],
+            selected=None,
         ),
-        title="Filter controls",
     ),
     ui.layout_column_wrap(
         ui.value_box(
-            "Number of penguins",
+            "Number of timeIDs",
             ui.output_text("count"),
             showcase=icon_svg("earlybirds"),
         ),
         ui.value_box(
-            "Average bill length",
-            ui.output_text("bill_length"),
-            showcase=icon_svg("ruler-horizontal"),
+            "Number of timeIDs",
+            ui.output_text("count1"),
+            showcase=icon_svg("earlybirds"),
         ),
         ui.value_box(
-            "Average bill depth",
-            ui.output_text("bill_depth"),
-            showcase=icon_svg("ruler-vertical"),
+            "Number of timeIDs",
+            ui.output_text("count3"),
+            showcase=icon_svg("earlybirds"),
         ),
         fill=False,
     ),
     ui.layout_columns(
         ui.card(
-            ui.card_header("Bill length and depth"),
+            ui.card_header("Features explorer"),
             ui.output_plot("length_depth"),
             full_screen=True,
         ),
         ui.card(
-            ui.card_header("Penguin data"),
+            ui.card_header("Data explorer"),
             ui.output_data_frame("summary_statistics"),
             full_screen=True,
         ),
     ),
     ui.include_css(app_dir / "styles.css"),
-    title="Penguins dashboard",
+    title="Volume predictions",
     fillable=True,
 )
 
 
 def server(input, output, session):
-    @reactive.calc
-    def filtered_df():
-        filt_df = df[df["species"].isin(input.species())]
-        filt_df = filt_df.loc[filt_df["body_mass_g"] < input.mass()]
-        return filt_df
-
-    @render.text
-    def count():
-        return filtered_df().shape[0]
-
-    @render.text
-    def bill_length():
-        return f"{filtered_df()['bill_length_mm'].mean():.1f} mm"
-
-    @render.text
-    def bill_depth():
-        return f"{filtered_df()['bill_depth_mm'].mean():.1f} mm"
-
-    @render.plot
-    def length_depth():
-        return sns.scatterplot(
-            data=filtered_df(),
-            x="bill_length_mm",
-            y="bill_depth_mm",
-            hue="species",
-        )
+    @reactive.Effect
+    @reactive.event(input.file)
+    def _():
+        if input.file():
+            file_info = input.file()[0]
+            df = pd.read_csv(file_info["datapath"])
+            df['bucket'] = np.floor(df['seconds_in_bucket'] / 30)
+            df = df.groupby(['time_id', 'bucket']).mean()[['bid_price1','ask_price1','bid_price2','ask_price2','bid_size1','ask_size1','bid_size2', 'ask_size2']].round(4).reset_index()
+            data.set(df)
+            ui.update_select(
+                "timeid",
+                label="Choose TimeID:",
+                choices=df["time_id"].unique().tolist(),
+                selected=df["time_id"].unique()[0],
+            )
 
     @render.data_frame
     def summary_statistics():
-        cols = [
-            "species",
-            "island",
-            "bill_length_mm",
-            "bill_depth_mm",
-            "body_mass_g",
-        ]
-        return render.DataGrid(filtered_df()[cols], filters=True)
+        return filtered_df()
 
+    @reactive.calc
+    def filtered_df():
+        df = data.get()
+        # if input.timeid() and not df.empty:
+        #     return df[df["time_id"] == input.timeid()]
+        return df
+
+    @render.text
+    def count():
+        return data.get()["time_id"].unique().shape[0]
+
+    @render.text
+    def count2():
+        return str(input.timeid())
 
 app = App(app_ui, server)
