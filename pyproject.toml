@@ -9,6 +9,9 @@ dependencies = [
     "numpy>=2.2.5",
     "pandas>=2.2.3",
     "plotly>=6.0.1",
+    "scikit-learn>=1.6.1",
     "seaborn>=0.13.2",
     "shiny>=1.4.0",
+    "shinywidgets>=0.5.2",
+    "xgboost>=3.0.0",
 ]
