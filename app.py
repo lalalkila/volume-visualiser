@@ -52,17 +52,17 @@ app_ui = ui.page_sidebar(
         ui.value_box(
             "Number of timeIDs",
             ui.output_text("count"),
-            showcase=icon_svg("earlybirds"),
+            showcase=icon_svg("calendar"),
         ),
         ui.value_box( # Added a second value box, but it seems to do the same thing.
             "Base Model RMSE",
             ui.output_text("count1"),
-            showcase=icon_svg("earlybirds"),
+            showcase=icon_svg("robot"),
         ),
         ui.value_box( # Added a third value box, but it seems to do the same thing.
             "Volume Model RMSE",
             ui.output_text("count3"),
-            showcase=icon_svg("earlybirds"),
+            showcase=icon_svg("cube"),
         ),
         fill=False,
     ),
@@ -96,7 +96,6 @@ def server(input, output, session):
                 df['bucket'] = np.floor(df['seconds_in_bucket'] / 30)
                 df = df.groupby(['time_id', 'bucket']).mean()[['bid_price1','ask_price1','bid_price2','ask_price2','bid_size1','ask_size1','bid_size2', 'ask_size2']].round(4).reset_index()
                 data.set(df)
-                # print(data.get().head()) #  Good for debugging, but remove in production
                 ui.update_select(
                     "timeid",
                     label="Choose TimeID:",
@@ -105,7 +104,6 @@ def server(input, output, session):
                 )
             except Exception as e:
                 print(f"Error reading CSV: {e}") # Important: Handle errors!
-                #  Consider showing a user-friendly message in the UI, not just printing.
 
     @reactive.calc
     def filtered_df():
@@ -132,10 +130,8 @@ def server(input, output, session):
         stock = get_stock_characteristics(stock)
         stock = get_stock_feature(stock)
         stock = get_volume_feature(stock)
-        print(stock.head()) # Good for debugging, but remove in production
         stock = stock.groupby('time_id', group_keys=False).apply(process_group)
         stock = stock.dropna()
-        print('got model data')
         return stock
     
     @reactive.calc
@@ -148,7 +144,6 @@ def server(input, output, session):
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
         model = XGBRegressor() 
         model.fit(X_train, y_train)
-        print('got base model')
         return model
     
     @reactive.calc
@@ -157,7 +152,6 @@ def server(input, output, session):
             return pd.DataFrame()
         stock = model_data()
         stock['residual'] = stock['future'] - base_model().predict(stock[['volatility', 'ma5']])
-        print('got residual')
         return stock
     
     @reactive.calc
@@ -178,8 +172,6 @@ def server(input, output, session):
             return pd.DataFrame()
         stock = get_residual()
         stock['vol_residual'] = stock['residual'] - vol_model().predict(stock[VOL_MODEL_FEATURES])
-        print('got vol residual')
-        print(stock.head())
         return stock
     
     @render.data_frame
@@ -226,7 +218,6 @@ def server(input, output, session):
     def plot():  
         if stock_features().empty:
             return None
-        print(stock_features().head()) # Good for debugging, but remove in production
         fig = go.Figure()
         features = input.display_features()
         for feature in features:
@@ -248,8 +239,6 @@ def server(input, output, session):
 
     @render.text
     def count1(): #Fixes count2 to be unique
-        # print(input.timeid())
-        # get_vol_residual()
         if stock_features().empty:
             return 0
         return np.sqrt(np.mean(np.square(get_residual()['residual'])))
