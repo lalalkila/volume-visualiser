@@ -31,56 +31,75 @@ features = [
 
 VOL_MODEL_FEATURES = ['volatility', 'ma5', 'bs_ratio', 'bs_chg', 'bd', 'ad',  'OBV', 'VWAP', 'Volume_MA', 'Lagged_Volume']
 
-app_ui = ui.page_sidebar(
-    ui.sidebar(
-        ui.input_file("file", "Upload a CSV file", accept=".csv"),
-        ui.input_select(
-            "timeid",
-            "Time ID",
-            [],  # Start with empty choices, to be updated later
-            selected=None,
-        ),
-        ui.input_selectize(  
-            "display_features",  
-            "Select features below:",  
-            {feature : feature for feature in features},
-            selected=['volatility'],  
-            multiple=True,  
-        ),  
+app_ui = ui.page_navbar(
+    ui.nav_spacer(),
+    ui.nav_panel(
+        "App Introduction",
+        ui.layout_columns(
+            ui.output_ui("data_intro")
+        )
     ),
-    ui.layout_column_wrap(
-        ui.value_box(
-            "Number of timeIDs",
-            ui.output_text("count"),
-            showcase=icon_svg("calendar"),
+
+
+    # Second tab - Main dashboard
+    ui.nav_panel(
+        "Interactive Model",
+        ui.page_sidebar(
+            ui.sidebar(
+                ui.input_file("file", "Upload a CSV file", accept=".csv"),
+                ui.input_select(
+                    "timeid",
+                    "Time ID",
+                    [],  # Start with empty choices, to be updated later
+                    selected=None,
+                ),
+                ui.input_selectize(  
+                    "display_features",  
+                    "Select features below:",  
+                    {feature : feature for feature in features},
+                    selected=['volatility'],  
+                    multiple=True,  
+                ),  
+            ),
+            ui.layout_column_wrap(
+                ui.value_box(
+                    "Number of timeIDs",
+                    ui.output_text("count"),
+                    showcase=icon_svg("calendar"),
+                ),
+                ui.value_box( # Added a second value box, but it seems to do the same thing.
+                    "Base Model RMSE",
+                    ui.output_text("count1"),
+                    showcase=icon_svg("robot"),
+                ),
+                ui.value_box( # Added a third value box, but it seems to do the same thing.
+                    "Volume Model RMSE",
+                    ui.output_text("count3"),
+                    showcase=icon_svg("cube"),
+                ),
+                fill=False,
+            ),
+            ui.layout_columns(
+                ui.card(
+                    ui.card_header("Features explorer"),
+                    output_widget("prediction"),
+                    output_widget("plot"),
+                    full_screen=True,
+                ),
+                ui.card(
+                    ui.card_header("Data explorer"),
+                    ui.output_data_frame("summary_features"),
+                    full_screen=True,
+                ),
+            ),
+            fillable=True,
+
         ),
-        ui.value_box( # Added a second value box, but it seems to do the same thing.
-            "Base Model RMSE",
-            ui.output_text("count1"),
-            showcase=icon_svg("robot"),
-        ),
-        ui.value_box( # Added a third value box, but it seems to do the same thing.
-            "Volume Model RMSE",
-            ui.output_text("count3"),
-            showcase=icon_svg("cube"),
-        ),
-        fill=False,
     ),
-    ui.layout_columns(
-        ui.card(
-            ui.card_header("Features explorer"),
-            output_widget("prediction"),
-            output_widget("plot"),
-            full_screen=True,
-        ),
-        ui.card(
-            ui.card_header("Data explorer"),
-            ui.output_data_frame("summary_features"),
-            full_screen=True,
-        ),
-    ),
-    ui.include_css(app_dir / "styles.css"),
+    id="navbar",
+    header=ui.include_css(app_dir / "styles.css"),
     title="Volume predictions",
+    window_title="Volume predictions",
     fillable=True,
 )
 
@@ -248,5 +267,62 @@ def server(input, output, session):
         if stock_features().empty:
             return 0
         return np.sqrt(np.mean(np.square(get_vol_residual()['vol_residual'])))
+    
+    @render.ui
+    def data_intro():
+
+        md = ui.markdown(
+            """
+            # 📈 Volatility Prediction Shiny App  
+  
+
+            ### Adjusted Residual Model with Volume Features
+
+            Welcome to our Shiny app for predicting stock volatility using an **Adjusted Residual Model** that leverages key **volume-driven features**. This tool is designed to assist traders, analysts, and researchers in forecasting short-term price fluctuations by combining traditional volatility modeling with volume-based signals.
+
+            ---
+
+            ## 🔍 What Is the Adjusted Residual Model?
+
+            The **Adjusted Residual Model** enhances baseline volatility predictions by adjusting their residuals using XGBoost algorithms. These adjustments are informed by features derived from trading volume, allowing for more responsive and accurate volatility forecasts, particularly during periods of unusual market activity.
+
+            ---
+
+            ## 🧠 Features Used in the Model
+
+            The model uses a carefully engineered set of volume and price-based features, collectively defined as:
+
+            Our model uses the following engineered features, which capture various dimensions of market activity and price-volume interaction:
+
+            - ma5: 5-period moving average of weighted average price.
+
+            - bs_ratio: Bid-ask size ratio, indicating supply-demand imbalance.
+
+            - bs_chg: Change in bid-ask spread, capturing short-term liquidity shifts.
+
+            - bd: Buy-side depth—aggregate buy-side volume near the best bid.
+
+            - ad: Ask-side depth—aggregate sell-side volume near the best ask.
+
+            - OBV (On-Balance Volume): A cumulative volume-based momentum indicator.
+
+            - VWAP (Volume-Weighted Average Price): The average price weighted by volume.
+
+            - Volume_MA: Moving average of trade volume, capturing trends in trading intensity.
+
+            - Lagged_Volume: Previous-period volume, useful for identifying momentum or reversals.
+
+            ## ⚙️ App Functionality
+
+            - Visualisation: Interactive plots for volatility predictions.
+
+            - Model Diagnostics: Residual analysis and performance metrics.
+
+            - Customization: Choose different dataset, time id and features to predict and visualise
+
+            """,
+        )
+
+        return ui.div(md, class_="my-3 lead")
 
 app = App(app_ui, server)
