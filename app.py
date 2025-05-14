@@ -2,6 +2,7 @@ from faicons import icon_svg
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+import plotly.subplots as sp
 
 from xgboost import XGBRegressor, XGBClassifier  # or XGBClassifier for classification
 from sklearn.model_selection import train_test_split
@@ -15,10 +16,8 @@ from shinywidgets import output_widget, render_widget
 data = reactive.Value(df)
 bucket_size = 30
 features = [
-    'volatility',
     'ma5',
     'ma10',
-    'future',
     'bs_ratio',
     'bs_chg',
     'bd',
@@ -26,10 +25,9 @@ features = [
     'OBV',
     'VWAP',
     'Volume_MA',
-    'Lagged_Volume'
 ]
 
-VOL_MODEL_FEATURES = ['volatility', 'ma5', 'bs_ratio', 'bs_chg', 'bd', 'ad',  'OBV', 'VWAP', 'Volume_MA', 'Lagged_Volume']
+VOL_MODEL_FEATURES = ['volatility', 'ma5', 'bs_ratio', 'bs_chg', 'bd', 'ad',  'OBV', 'VWAP', 'Volume_MA']
 
 app_ui = ui.page_navbar(
     ui.nav_spacer(),
@@ -55,10 +53,11 @@ app_ui = ui.page_navbar(
                 ),
                 ui.input_selectize(  
                     "display_features",  
-                    "Select features below:",  
+                    "Select features below (Max 4):",  
                     {feature : feature for feature in features},
-                    selected=['volatility'],  
+                    selected=['ad', 'bd', 'OBV', 'Volume_MA'],  
                     multiple=True,  
+                    options={'maxItems': 4},
                 ),  
             ),
             ui.layout_column_wrap(
@@ -81,19 +80,22 @@ app_ui = ui.page_navbar(
             ),
             ui.layout_columns(
                 ui.card(
-                    ui.card_header("Features explorer"),
+                    ui.card_header("Model explorer"),
                     output_widget("prediction"),
-                    output_widget("plot"),
                     full_screen=True,
                 ),
                 ui.card(
-                    ui.card_header("Data explorer"),
-                    ui.output_data_frame("summary_features"),
+                    ui.card_header("Feature explorer"),
+                    output_widget("feature_plots"),
                     full_screen=True,
                 ),
+                # ui.card(
+                #     ui.card_header("Data explorer"),
+                #     ui.output_data_frame("summary_features"),
+                #     full_screen=True,
+                # ),
             ),
             fillable=True,
-
         ),
     ),
     id="navbar",
@@ -160,6 +162,10 @@ def server(input, output, session):
         stock = model_data()
         X = stock[['volatility', 'ma5']]
         y = stock['future']
+        stock = stock.sort_values(["time_id", "bucket"])
+        split_index = int(len(stock) * 0.8)
+        X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
+        y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]  
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
         model = XGBRegressor() 
         model.fit(X_train, y_train)
@@ -170,7 +176,8 @@ def server(input, output, session):
         if data.get().empty:
             return pd.DataFrame()
         stock = model_data()
-        stock['residual'] = abs(stock['future'] - base_model().predict(stock[['volatility', 'ma5']]))
+        stock['base_pred'] = base_model().predict(stock[['volatility', 'ma5']])
+        stock['residual'] = stock['future'] - stock['base_pred']
         return stock
     
     @reactive.calc
@@ -180,6 +187,10 @@ def server(input, output, session):
         stock = get_residual()
         X = stock[VOL_MODEL_FEATURES]
         y = stock['residual']
+        stock = stock.sort_values(["time_id", "bucket"])
+        split_index = int(len(stock) * 0.8)
+        X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
+        y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]  
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
         model = XGBRegressor() 
         model.fit(X_train, y_train)
@@ -197,8 +208,42 @@ def server(input, output, session):
     def summary_features():
         if stock_features().empty:
             return pd.DataFrame()
-        return stock_features()[['time_id', 'bucket', 'WAP', 'log_return', 'volatility', 'ma5', 'ma10', 'future', 'bs_ratio', 'bs_chg', 'bd', 'ad', 'OBV', 'VWAP', 'Volume_MA', 'Lagged_Volume']].round(4)
+        return stock_features()[['time_id', 'bucket', 'WAP', 'log_return', 'volatility', 'ma5', 'ma10', 'future', 'bs_ratio', 'bs_chg', 'bd', 'ad', 'OBV', 'VWAP', 'Volume_MA']].round(4)
 
+    @render_widget  
+    def feature_plots():  
+        if stock_features().empty:
+            return None
+       
+        fig = sp.make_subplots(
+            rows=2, cols=2,
+            subplot_titles=input.display_features()
+        )
+       
+        features = input.display_features()
+        for i, feature in enumerate(features):
+            row = i // 2 + 1
+            col = i % 2 + 1
+           
+            fig.add_trace(
+                go.Scatter(
+                    x=stock_features()["bucket"],
+                    y=stock_features()[feature],
+                    mode="lines",
+                    name=feature
+                ),
+                row=row, col=col
+            )
+       
+        fig.update_layout(
+            autosize=True,
+            margin=dict(l=40, r=40, t=40, b=40),
+            showlegend=False,
+        )
+
+
+        return fig
+        
     @render_widget  
     def prediction():  
         if get_vol_residual().empty or filtered_df().empty or input.timeid() is None:
@@ -210,7 +255,7 @@ def server(input, output, session):
         fig.add_trace(
                 go.Scatter(
                     x=filtered_df()[filtered_df()['future'].notna()]["bucket"],
-                    y=filtered_df()[filtered_df()['future'].notna()]['volatility'],
+                    y=filtered_df()[filtered_df()['future'].notna()]['future'],
                     mode="lines",
                     name='volatility',
                 )
@@ -218,7 +263,7 @@ def server(input, output, session):
         fig.add_trace(
                 go.Scatter(
                     x=stock["bucket"],
-                    y=stock['volatility'] - stock['residual'],
+                    y=stock['base_pred'],
                     mode="lines",
                     name='Base Model',
                 )
@@ -226,30 +271,13 @@ def server(input, output, session):
         fig.add_trace(
                 go.Scatter(
                     x=stock["bucket"],
-                    y=stock['volatility'] * (1 + (stock['vol_residual'] - stock['vol_residual'].abs().mean()) / stock['vol_residual'].abs().mean()),
-                    # y=stock['volatility'] - stock['vol_residual'],
+                    y=stock['base_pred'] + stock['vol_residual'],
                     mode="lines",
                     name='Volume Model',
                 )
             )
         return fig
     
-    @render_widget  
-    def plot():  
-        if stock_features().empty:
-            return None
-        fig = go.Figure()
-        features = input.display_features()
-        for feature in features:
-            fig.add_trace(
-                go.Scatter(
-                    x=stock_features()["bucket"],
-                    y=stock_features()[feature],
-                    mode="lines",
-                    name=feature,
-                )
-            )
-        return fig
 
     @render.text
     def count():
@@ -310,8 +338,6 @@ def server(input, output, session):
             - VWAP (Volume-Weighted Average Price): The average price weighted by volume.
 
             - Volume_MA: Moving average of trade volume, capturing trends in trading intensity.
-
-            - Lagged_Volume: Previous-period volume, useful for identifying momentum or reversals.
 
             ## ⚙️ App Functionality
 
