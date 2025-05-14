@@ -178,8 +178,7 @@ def server(input, output, session):
         if data.get().empty:
             return pd.DataFrame()
         stock = model_data()
-        stock['base_pred'] = base_model().predict(stock[['volatility', 'ma5']])
-        stock['residual'] = stock['future'] - stock['base_pred']
+        stock['residual'] = stock['future'] - base_model().predict(stock[['volatility', 'ma5']])
         return stock
     
     @reactive.calc
@@ -202,7 +201,7 @@ def server(input, output, session):
         if data.get().empty:
             return pd.DataFrame()
         stock = get_residual()
-        stock['vol_residual'] = vol_model().predict(stock[VOL_MODEL_FEATURES])
+        stock['vol_residual'] = stock['residual'] - vol_model().predict(stock[VOL_MODEL_FEATURES])
         return stock
     
     @render.data_frame
@@ -238,7 +237,7 @@ def server(input, output, session):
         fig.add_trace(
                 go.Scatter(
                     x=stock["bucket"],
-                    y=stock['base_pred'] - stock['vol_residual'],
+                    y=stock['volatility'] - stock['residual'] - stock['vol_residual'],
                     mode="lines",
                     name='Volume Model',
                 )
