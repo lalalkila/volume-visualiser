@@ -54,8 +54,6 @@ def get_volume_feature(stock : pd.DataFrame) -> pd.DataFrame:
     # 3. Volume Moving Average (using bid and ask size as volume proxy)
     stock['Volume_MA'] = (stock['bid_size1'] + stock['ask_size1']).rolling(window=10).mean()
 
-    # 4. Lagged Volume (shifted volume by 1 period)
-    stock['Lagged_Volume'] = (stock['bid_size1'] + stock['ask_size1']).shift(1)
 
     return stock
 
