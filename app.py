@@ -53,9 +53,9 @@ app_ui = ui.page_navbar(
                 ),
                 ui.input_selectize(  
                     "display_features",  
-                    "Feature Explorere\nSelect features (Max 4):",  
+                    "Select features below (Max 4):",  
                     {feature : feature for feature in features},
-                    selected=['bd', 'OBV', 'VWAP', 'Volume_MA'],  
+                    selected=['ad', 'bd', 'OBV', 'Volume_MA'],  
                     multiple=True,  
                     options={'maxItems': 4},
                 ),  
@@ -91,13 +91,11 @@ app_ui = ui.page_navbar(
                 ),
                 # ui.card(
                 #     ui.card_header("Data explorer"),
-                #     ui.output_data_frame("summary_statistics"),
                 #     ui.output_data_frame("summary_features"),
                 #     full_screen=True,
                 # ),
             ),
             fillable=True,
-
         ),
     ),
     id="navbar",
@@ -168,7 +166,8 @@ def server(input, output, session):
         stock = stock.sort_values(["time_id", "bucket"])
         split_index = int(len(stock) * 0.8)
         X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
-        y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]        
+        y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]  
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
         model = XGBRegressor() 
         model.fit(X_train, y_train)
         return model
@@ -178,7 +177,8 @@ def server(input, output, session):
         if data.get().empty:
             return pd.DataFrame()
         stock = model_data()
-        stock['residual'] = stock['future'] - base_model().predict(stock[['volatility', 'ma5']])
+        stock['base_pred'] = base_model().predict(stock[['volatility', 'ma5']])
+        stock['residual'] = stock['future'] - stock['base_pred']
         return stock
     
     @reactive.calc
@@ -191,7 +191,8 @@ def server(input, output, session):
         stock = stock.sort_values(["time_id", "bucket"])
         split_index = int(len(stock) * 0.8)
         X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
-        y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]        
+        y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]  
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
         model = XGBRegressor() 
         model.fit(X_train, y_train)
         return model
@@ -211,6 +212,40 @@ def server(input, output, session):
         return stock_features()[['time_id', 'bucket', 'WAP', 'log_return', 'volatility', 'ma5', 'ma10', 'future', 'bs_ratio', 'bs_chg', 'bd', 'ad', 'OBV', 'VWAP', 'Volume_MA']].round(4)
 
     @render_widget  
+    def feature_plots():  
+        if stock_features().empty:
+            return None
+       
+        fig = sp.make_subplots(
+            rows=2, cols=2,
+            subplot_titles=input.display_features()
+        )
+       
+        features = input.display_features()
+        for i, feature in enumerate(features):
+            row = i // 2 + 1
+            col = i % 2 + 1
+           
+            fig.add_trace(
+                go.Scatter(
+                    x=stock_features()["bucket"],
+                    y=stock_features()[feature],
+                    mode="lines",
+                    name=feature
+                ),
+                row=row, col=col
+            )
+       
+        fig.update_layout(
+            autosize=True,
+            margin=dict(l=40, r=40, t=40, b=40),
+            showlegend=False,
+        )
+
+
+        return fig
+        
+    @render_widget  
     def prediction():  
         if get_vol_residual().empty or filtered_df().empty or input.timeid() is None:
             return None
@@ -229,7 +264,7 @@ def server(input, output, session):
         fig.add_trace(
                 go.Scatter(
                     x=stock["bucket"],
-                    y=stock['volatility'] - stock['residual'],
+                    y=stock['base_pred'],
                     mode="lines",
                     name='Base Model',
                 )
@@ -237,7 +272,7 @@ def server(input, output, session):
         fig.add_trace(
                 go.Scatter(
                     x=stock["bucket"],
-                    y=stock['volatility'] - stock['residual'] - stock['vol_residual'],
+                    y=stock['base_pred'] + stock['vol_residual'],
                     mode="lines",
                     name='Volume Model',
                 )
@@ -253,47 +288,7 @@ def server(input, output, session):
         )
 
         return fig
-
-    @render_widget  
-    def feature_plots():  
-        if stock_features().empty:
-            return None
-        
-        fig = sp.make_subplots(
-            rows=2, cols=2, 
-            subplot_titles=input.display_features() 
-        )
-        
-        features = input.display_features()
-        for i, feature in enumerate(features):
-            row = i // 2 + 1
-            col = i % 2 + 1
-            
-            fig.add_trace(
-                go.Scatter(
-                    x=stock_features()["bucket"],
-                    y=stock_features()[feature],
-                    mode="lines",
-                    name=feature
-                ),
-                row=row, col=col 
-            )
-        
-        fig.update_layout(
-            autosize=True,
-            margin=dict(l=40, r=40, t=40, b=40),
-            showlegend=False,
-        )
-
-        return fig
     
-    @render.data_frame
-    def summary_features():
-        if stock_features().empty:
-            return pd.DataFrame()
-        return stock_features()[['time_id', 'bucket', 'WAP', 'log_return', 'volatility', 'ma5', 'ma10', 'future', 'bs_ratio', 'bs_chg', 'bd', 'ad', 'OBV', 'VWAP', 'Volume_MA']].round(4)
-
-
 
     @render.text
     def count():
