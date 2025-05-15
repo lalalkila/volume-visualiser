@@ -51,6 +51,12 @@ app_ui = ui.page_navbar(
                     [],  # Start with empty choices, to be updated later
                     selected=None,
                 ),
+                ui.input_select(
+                    "stockid",
+                    "Stock ID",
+                    [],  # Start with empty choices, to be updated later
+                    selected=None,
+                ),
                 ui.input_selectize(  
                     "display_features",  
                     "Select features below (Max 4):",  
@@ -115,7 +121,7 @@ def server(input, output, session):
             try:
                 df = pd.read_csv(file_info["datapath"])
                 df['bucket'] = np.floor(df['seconds_in_bucket'] / 30)
-                df = df.groupby(['time_id', 'bucket']).mean()[['bid_price1','ask_price1','bid_price2','ask_price2','bid_size1','ask_size1','bid_size2', 'ask_size2']].round(4).reset_index()
+                df = df.groupby(['stock_id', 'time_id', 'bucket']).mean()[['bid_price1','ask_price1','bid_price2','ask_price2','bid_size1','ask_size1','bid_size2', 'ask_size2']].round(4).reset_index()
                 data.set(df)
                 ui.update_select(
                     "timeid",
@@ -123,14 +129,20 @@ def server(input, output, session):
                     choices=df["time_id"].unique().tolist(),
                     selected=str(df["time_id"].unique()[0]) if not df.empty else None, #handle empty df
                 )
+                ui.update_select(
+                    "stockid",
+                    label="Choose TimeID:",
+                    choices=df["stock_id"].unique().tolist(),
+                    selected=str(df["stock_id"].unique()[0]) if not df.empty else None, #handle empty df
+                )
             except Exception as e:
                 print(f"Error reading CSV: {e}") # Important: Handle errors!
 
     @reactive.calc
     def filtered_df():
         df = data.get()
-        if input.timeid():
-            stock =  df[df["time_id"] == int(input.timeid())]
+        if input.timeid() and input.stockid():
+            stock = df[(df["time_id"] == int(input.timeid())) & (df["stock_id"] == int(input.stockid()))]
             return stock
         else:
             return df
