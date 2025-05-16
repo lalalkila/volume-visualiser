@@ -214,7 +214,7 @@ def server(input, output, session):
         if data.get().empty:
             return pd.DataFrame()
         stock = get_residual()
-        stock['vol_residual'] = vol_model().predict(stock[VOL_MODEL_FEATURES])
+        stock['vol_residual'] = stock['residual'] - vol_model().predict(stock[VOL_MODEL_FEATURES])
         return stock
     
     @render.data_frame
