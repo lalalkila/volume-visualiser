@@ -90,16 +90,16 @@ app_ui = ui.page_navbar(
                     output_widget("prediction"),
                     full_screen=True,
                 ),
-                ui.card(
-                    ui.card_header("Feature explorer"),
-                    output_widget("feature_plots"),
-                    full_screen=True,
-                ),
                 # ui.card(
-                #     ui.card_header("Data explorer"),
-                #     ui.output_data_frame("summary_features"),
+                #     ui.card_header("Feature explorer"),
+                #     output_widget("feature_plots"),
                 #     full_screen=True,
                 # ),
+                ui.card(
+                    ui.card_header("Data explorer"),
+                    ui.output_data_frame("summary_features"),
+                    full_screen=True,
+                ),
             ),
             fillable=True,
         ),
@@ -119,7 +119,7 @@ def server(input, output, session):
         if input.file():
             file_info = input.file()[0]
             try:
-                df = pd.read_csv(file_info["datapath"])
+                df = pd.read_csv(file_info["datapath"], sep='\t')
                 df['bucket'] = np.floor(df['seconds_in_bucket'] / 30)
                 df = df.groupby(['stock_id', 'time_id', 'bucket']).mean()[['bid_price1','ask_price1','bid_price2','ask_price2','bid_size1','ask_size1','bid_size2', 'ask_size2']].round(4).reset_index()
                 data.set(df)
@@ -138,7 +138,7 @@ def server(input, output, session):
             except Exception as e:
                 print(f"Error reading CSV: {e}") # Important: Handle errors!
 
-    @reactive.calc
+    @reactive.calc  
     def filtered_df():
         df = data.get()
         if input.timeid() and input.stockid():
@@ -179,7 +179,7 @@ def server(input, output, session):
         split_index = int(len(stock) * 0.8)
         X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
         y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]  
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
+        # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
         model = XGBRegressor() 
         model.fit(X_train, y_train)
         return model
@@ -204,7 +204,7 @@ def server(input, output, session):
         split_index = int(len(stock) * 0.8)
         X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
         y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]  
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
+        # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
         model = XGBRegressor() 
         model.fit(X_train, y_train)
         return model
