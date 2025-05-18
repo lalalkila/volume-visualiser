@@ -214,7 +214,8 @@ def server(input, output, session):
         if data.get().empty:
             return pd.DataFrame()
         stock = get_residual()
-        stock['vol_residual'] = stock['residual'] - vol_model().predict(stock[VOL_MODEL_FEATURES])
+        stock['vol_pred'] = vol_model().predict(stock[VOL_MODEL_FEATURES])
+        stock['vol_residual'] = stock['residual'] - stock['vol_pred']
         return stock
     
     @render.data_frame
@@ -284,7 +285,7 @@ def server(input, output, session):
         fig.add_trace(
                 go.Scatter(
                     x=stock["bucket"],
-                    y=stock['base_pred'] + stock['vol_residual'],
+                    y=stock['base_pred'] + stock['vol_pred'],
                     mode="lines",
                     name='Volume Model',
                 )
