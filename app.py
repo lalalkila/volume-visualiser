@@ -315,11 +315,7 @@ def server(input, output, session):
         fig.add_trace(
                 go.Scatter(
                     x=stock["bucket"],
-<<<<<<< Updated upstream
-                    y=stock['base_pred'] + stock['vol_pred'],
-=======
                     y=stock['future'] - stock['vol_residual'],
->>>>>>> Stashed changes
                     mode="lines",
                     name='Volume Model',
                 )
