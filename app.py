@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 import plotly.subplots as sp
 
 from xgboost import XGBRegressor
+from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
 
 # Import data from shared.py
@@ -298,8 +299,8 @@ def server(input, output, session):
         fig = go.Figure()
         fig.add_trace(
                 go.Scatter(
-                    x=filtered_df()[filtered_df()['future'].notna()]["bucket"],
-                    y=filtered_df()[filtered_df()['future'].notna()]['future'],
+                    x=stock["bucket"],
+                    y=stock['volatility'],
                     mode="lines",
                     name='volatility',
                 )
@@ -315,7 +316,7 @@ def server(input, output, session):
         fig.add_trace(
                 go.Scatter(
                     x=stock["bucket"],
-                    y=stock['future'] - stock['vol_residual'],
+                    y=stock['base_pred'] - stock['vol_pred'],
                     mode="lines",
                     name='Volume Model',
                 )
@@ -332,6 +333,50 @@ def server(input, output, session):
 
         return fig
     
+    @render_widget  
+    def residual():  
+        if get_vol_residual().empty or filtered_df().empty or input.timeid() is None:
+            return None
+        
+        stock = get_vol_residual()[get_vol_residual()["time_id"] == int(input.timeid())]
+
+        fig = go.Figure()
+        fig.add_trace(
+                go.Scatter(
+                    x=filtered_df()["bucket"],
+                    y=filtered_df()['volatility'],
+                    mode="lines",
+                    name='volatility',
+                )
+            )
+        fig.add_trace(
+                go.Scatter(
+                    x=stock["bucket"],
+                    y=stock['base_pred'],
+                    mode="lines",
+                    name='Base Model',
+                )
+            )
+        fig.add_trace(
+                go.Scatter(
+                    x=stock["bucket"],
+                    y=stock['base_pred'] - stock['vol_pred'],
+                    mode="lines",
+                    name='Volume Model',
+                )
+            )
+        
+        fig.update_layout(
+            legend=dict(
+                x=1.02,        # Slightly outside the main plot (right side)
+                y=0.5,         # Middle vertically
+                xanchor='left',
+                yanchor='middle'
+            )
+        )
+
+        return fig
+
 
     @render.text
     def count():
