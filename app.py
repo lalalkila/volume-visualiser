@@ -91,8 +91,6 @@ app_ui = ui.page_navbar(
                     full_screen=True,
                 ),
                 ui.card(
-                    ui.card_header("Data explorer"),
-                    ui.output_data_frame("summary_features"),
                     ui.card_header("Feature explorer"),
                     output_widget("feature_plots"),
                     full_screen=True,
@@ -119,10 +117,10 @@ def server(input, output, session):
     @reactive.event(input.file)
     def _():
         if input.file():
+            print("hello")
             file_info = input.file()[0]
             try:
-                df = pd.read_csv(file_info["datapath"], sep='\t')
-                df['bucket'] = np.floor(df['seconds_in_bucket'] / 30)
+                print(file_info["datapath"])
                 df = pd.read_csv(file_info["datapath"], delimiter='\t')
                 df['bucket'] = np.floor(df['seconds_in_bucket'] / 20)
                 df = df.groupby(['stock_id', 'time_id', 'bucket']).mean()[['bid_price1','ask_price1','bid_price2','ask_price2','bid_size1','ask_size1','bid_size2', 'ask_size2']].round(4).reset_index()
@@ -163,7 +161,6 @@ def server(input, output, session):
                 )
                 ui.update_select(
                     "stockid",
-                    label="Choose TimeID:",
                     label="Choose StockID:",
                     choices=df["stock_id"].unique().tolist(),
                     selected=str(df["stock_id"].unique()[0]) if not df.empty else None, #handle empty df
@@ -197,7 +194,6 @@ def server(input, output, session):
         stock = get_stock_feature(stock)
         stock = get_volume_feature(stock)
         stock = stock.groupby('time_id', group_keys=False).apply(process_group)
-        stock_with_na = stock.copy()
         # stock_with_na = stock.copy()
         stock = stock.dropna()
         return stock
@@ -319,8 +315,11 @@ def server(input, output, session):
         fig.add_trace(
                 go.Scatter(
                     x=stock["bucket"],
+<<<<<<< Updated upstream
                     y=stock['base_pred'] + stock['vol_pred'],
+=======
                     y=stock['future'] - stock['vol_residual'],
+>>>>>>> Stashed changes
                     mode="lines",
                     name='Volume Model',
                 )
