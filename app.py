@@ -101,6 +101,7 @@ app_ui = ui.page_navbar(
                 #     ui.output_data_frame("summary_features"),
                 #     full_screen=True,
                 # ),
+                col_widths=(7, 5),
             ),
             fillable=True,
         ),
@@ -286,8 +287,19 @@ def server(input, output, session):
 
         # Create subplot with 2 rows
         fig = sp.make_subplots(
-            rows=1, cols=2,
+            rows=2, cols=1,
             subplot_titles=("Base Model Feature Importance", "Volume Model Feature Importance")
+        )
+
+        # Volume model bar chart
+        fig.add_trace(
+            go.Bar(
+                x=vol_importances,
+                y=vol_features,
+                orientation='h',
+                name="Volume Model"
+            ),
+            row=2, col=1
         )
 
         # Base model bar chart
@@ -299,17 +311,6 @@ def server(input, output, session):
                 name="Base Model"
             ),
             row=1, col=1
-        )
-
-        # Volume model bar chart
-        fig.add_trace(
-            go.Bar(
-                x=vol_importances,
-                y=vol_features,
-                orientation='h',
-                name="Volume Model"
-            ),
-            row=1, col=2
         )
 
         fig.update_layout(
