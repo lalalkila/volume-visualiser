@@ -92,7 +92,7 @@ app_ui = ui.page_navbar(
                     full_screen=True,
                 ),
                 ui.card(
-                    ui.card_header("Feature explorer"),
+                    ui.card_header("Feature Importance"),
                     output_widget("feature_plots"),
                     full_screen=True,
                 ),
@@ -213,6 +213,7 @@ def server(input, output, session):
         # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
         model = XGBRegressor() 
         model.fit(X_train, y_train)
+        print("Base model fitted:", model)
         return model
     
     @reactive.calc
@@ -238,6 +239,8 @@ def server(input, output, session):
         # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
         model = XGBRegressor() 
         model.fit(X_train, y_train)
+        print("Vol model fitted:", model)
+
         return model
     
     @reactive.calc
@@ -255,39 +258,61 @@ def server(input, output, session):
             return pd.DataFrame()
         return stock_features()[['time_id', 'bucket', 'WAP', 'log_return', 'volatility', 'ma5', 'ma10', 'future', 'bs_ratio', 'bs_chg', 'bd', 'ad', 'OBV', 'VWAP', 'Volume_MA']].round(4)
 
-    @render_widget  
-    def feature_plots():  
-        if stock_features().empty:
+    @render_widget
+    def feature_plots():
+        if base_model() is None or vol_model() is None:
             return None
-       
+        
+        base = base_model()
+        vol = vol_model()
+
+        if not hasattr(base, "feature_importances_") or not hasattr(vol, "feature_importances_"):
+            return None
+
+        # Get feature importances from both models
+        base_importances = base.feature_importances_
+        base_features = ['volatility', 'ma5']
+        
+        vol_importances = vol.feature_importances_
+        vol_features = VOL_MODEL_FEATURES
+        print(vol_importances)
+
+        # Create subplot with 2 rows
         fig = sp.make_subplots(
-            rows=2, cols=2,
-            subplot_titles=input.display_features()
-        )
-       
-        features = input.display_features()
-        for i, feature in enumerate(features):
-            row = i // 2 + 1
-            col = i % 2 + 1
-           
-            fig.add_trace(
-                go.Scatter(
-                    x=stock_features()["bucket"],
-                    y=stock_features()[feature],
-                    mode="lines",
-                    name=feature
-                ),
-                row=row, col=col
-            )
-       
-        fig.update_layout(
-            autosize=True,
-            margin=dict(l=40, r=40, t=40, b=40),
-            showlegend=False,
+            rows=1, cols=2,
+            subplot_titles=("Base Model Feature Importance", "Volume Model Feature Importance")
         )
 
+        # Base model bar chart
+        fig.add_trace(
+            go.Bar(
+                x=base_importances,
+                y=base_features,
+                orientation='h',
+                name="Base Model"
+            ),
+            row=1, col=1
+        )
+
+        # Volume model bar chart
+        fig.add_trace(
+            go.Bar(
+                x=vol_importances,
+                y=vol_features,
+                orientation='h',
+                name="Volume Model"
+            ),
+            row=1, col=2
+        )
+
+        fig.update_layout(
+            height=400,
+            showlegend=False,
+            margin=dict(l=40, r=40, t=40, b=40),
+        )
 
         return fig
+
         
     @render_widget  
     def prediction():  
@@ -302,7 +327,7 @@ def server(input, output, session):
                     x=stock["bucket"],
                     y=stock['volatility'],
                     mode="lines",
-                    name='volatility',
+                    name='Realised Volatility',
                 )
             )
         fig.add_trace(
@@ -310,7 +335,7 @@ def server(input, output, session):
                     x=stock["bucket"],
                     y=stock['base_pred'],
                     mode="lines",
-                    name='Base Model',
+                    name='Predicted Volatility (Base)',
                 )
             )
         fig.add_trace(
@@ -318,7 +343,7 @@ def server(input, output, session):
                     x=stock["bucket"],
                     y=stock['base_pred'] - stock['vol_pred'],
                     mode="lines",
-                    name='Volume Model',
+                    name='Predicted Volatility (Volume)',
                 )
             )
         
