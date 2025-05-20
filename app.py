@@ -90,16 +90,12 @@ app_ui = ui.page_navbar(
                     output_widget("prediction"),
                     full_screen=True,
                 ),
-                # ui.card(
-                #     ui.card_header("Feature explorer"),
-                #     output_widget("feature_plots"),
-                #     full_screen=True,
-                # ),
                 ui.card(
-                    ui.card_header("Data explorer"),
-                    ui.output_data_frame("summary_features"),
+                    ui.card_header("Feature explorer"),
+                    output_widget("feature_plots"),
                     full_screen=True,
                 ),
+                # ui.cacd
             ),
             fillable=True,
         ),
