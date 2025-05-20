@@ -211,8 +211,10 @@ def server(input, output, session):
         X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
         y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]  
         # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
+        y_train_scaled = y_train * 10000
+
         model = XGBRegressor() 
-        model.fit(X_train, y_train)
+        model.fit(X_train, y_train_scaled)
         print("Base model fitted:", model)
         return model
     
@@ -221,7 +223,7 @@ def server(input, output, session):
         if data.get().empty:
             return pd.DataFrame()
         stock = model_data()
-        stock['base_pred'] = base_model().predict(stock[['volatility', 'ma5']])
+        stock['base_pred'] = base_model().predict(stock[['volatility', 'ma5']]) / 10000
         stock['residual'] = stock['future'] - stock['base_pred']
         return stock
     
@@ -237,9 +239,14 @@ def server(input, output, session):
         X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
         y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]  
         # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
+        y_train_scaled = y_train * 10000
+
         model = XGBRegressor() 
-        model.fit(X_train, y_train)
+        model.fit(X_train, y_train_scaled)
         print("Vol model fitted:", model)
+        print(X_train.head())
+        print(y_train_scaled.head())
+        print(model.feature_importances_)
 
         return model
     
@@ -248,7 +255,7 @@ def server(input, output, session):
         if data.get().empty:
             return pd.DataFrame()
         stock = get_residual()
-        stock['vol_pred'] = vol_model().predict(stock[VOL_MODEL_FEATURES])
+        stock['vol_pred'] = vol_model().predict(stock[VOL_MODEL_FEATURES]) / 10000
         stock['vol_residual'] = stock['residual'] - stock['vol_pred']
         return stock
     
