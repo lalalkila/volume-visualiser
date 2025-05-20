@@ -4,7 +4,8 @@ import numpy as np
 import plotly.graph_objects as go
 import plotly.subplots as sp
 
-from xgboost import XGBRegressor, XGBClassifier  # or XGBClassifier for classification
+from xgboost import XGBRegressor
+from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
 
 # Import data from shared.py
@@ -95,7 +96,11 @@ app_ui = ui.page_navbar(
                     output_widget("feature_plots"),
                     full_screen=True,
                 ),
-                # ui.cacd
+                # ui.card(
+                #     ui.card_header("Data explorer"),
+                #     ui.output_data_frame("summary_features"),
+                #     full_screen=True,
+                # ),
             ),
             fillable=True,
         ),
@@ -113,11 +118,41 @@ def server(input, output, session):
     @reactive.event(input.file)
     def _():
         if input.file():
+            print("hello")
             file_info = input.file()[0]
             try:
-                df = pd.read_csv(file_info["datapath"], sep='\t')
-                df['bucket'] = np.floor(df['seconds_in_bucket'] / 30)
+                print(file_info["datapath"])
+                df = pd.read_csv(file_info["datapath"], delimiter='\t')
+                df['bucket'] = np.floor(df['seconds_in_bucket'] / 20)
                 df = df.groupby(['stock_id', 'time_id', 'bucket']).mean()[['bid_price1','ask_price1','bid_price2','ask_price2','bid_size1','ask_size1','bid_size2', 'ask_size2']].round(4).reset_index()
+                
+                # # Create full range of time_ids
+                # full_time_ids = pd.DataFrame({'time_id': range(stock['time_id'].min(), stock['time_id'].max() + 1)})
+                
+                # # Merge to add missing ones
+                # stock = full_time_ids.merge(stock, on='time_id', how='left')
+                # stock = stock.sort_values(by=['time_id', 'bucket'])
+
+                # Get all unique stock_ids in the dataframe
+                unique_stock_ids = df['stock_id'].unique()
+
+                # Create a template with all combinations of stock_id and time_id
+                min_time_id = df['time_id'].min()
+                max_time_id = df['time_id'].max()
+                time_range = range(min_time_id, max_time_id + 1)
+
+                # Create a cross join between stock_ids and time_ids
+                template = pd.DataFrame([(stock_id, time_id) 
+                                    for stock_id in unique_stock_ids 
+                                    for time_id in time_range],
+                                    columns=['stock_id', 'time_id'])
+
+                # Merge the original dataframe with the template
+                df_complete = template.merge(df, on=['stock_id', 'time_id'], how='left')
+
+                # Sort the result
+                df_complete = df_complete.sort_values(by=['stock_id', 'time_id', 'bucket'])
+                
                 data.set(df)
                 ui.update_select(
                     "timeid",
@@ -127,7 +162,7 @@ def server(input, output, session):
                 )
                 ui.update_select(
                     "stockid",
-                    label="Choose TimeID:",
+                    label="Choose StockID:",
                     choices=df["stock_id"].unique().tolist(),
                     selected=str(df["stock_id"].unique()[0]) if not df.empty else None, #handle empty df
                 )
@@ -160,7 +195,7 @@ def server(input, output, session):
         stock = get_stock_feature(stock)
         stock = get_volume_feature(stock)
         stock = stock.groupby('time_id', group_keys=False).apply(process_group)
-        stock_with_na = stock.copy()
+        # stock_with_na = stock.copy()
         stock = stock.dropna()
         return stock
     
@@ -264,8 +299,8 @@ def server(input, output, session):
         fig = go.Figure()
         fig.add_trace(
                 go.Scatter(
-                    x=filtered_df()[filtered_df()['future'].notna()]["bucket"],
-                    y=filtered_df()[filtered_df()['future'].notna()]['future'],
+                    x=stock["bucket"],
+                    y=stock['volatility'],
                     mode="lines",
                     name='volatility',
                 )
@@ -281,7 +316,7 @@ def server(input, output, session):
         fig.add_trace(
                 go.Scatter(
                     x=stock["bucket"],
-                    y=stock['base_pred'] + stock['vol_pred'],
+                    y=stock['base_pred'] - stock['vol_pred'],
                     mode="lines",
                     name='Volume Model',
                 )
@@ -298,6 +333,50 @@ def server(input, output, session):
 
         return fig
     
+    @render_widget  
+    def residual():  
+        if get_vol_residual().empty or filtered_df().empty or input.timeid() is None:
+            return None
+        
+        stock = get_vol_residual()[get_vol_residual()["time_id"] == int(input.timeid())]
+
+        fig = go.Figure()
+        fig.add_trace(
+                go.Scatter(
+                    x=filtered_df()["bucket"],
+                    y=filtered_df()['volatility'],
+                    mode="lines",
+                    name='volatility',
+                )
+            )
+        fig.add_trace(
+                go.Scatter(
+                    x=stock["bucket"],
+                    y=stock['base_pred'],
+                    mode="lines",
+                    name='Base Model',
+                )
+            )
+        fig.add_trace(
+                go.Scatter(
+                    x=stock["bucket"],
+                    y=stock['base_pred'] - stock['vol_pred'],
+                    mode="lines",
+                    name='Volume Model',
+                )
+            )
+        
+        fig.update_layout(
+            legend=dict(
+                x=1.02,        # Slightly outside the main plot (right side)
+                y=0.5,         # Middle vertically
+                xanchor='left',
+                yanchor='middle'
+            )
+        )
+
+        return fig
+
 
     @render.text
     def count():
