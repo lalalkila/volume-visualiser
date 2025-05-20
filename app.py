@@ -2,6 +2,7 @@ from faicons import icon_svg
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+import plotly.express as px
 import plotly.subplots as sp
 
 from xgboost import XGBRegressor
@@ -101,7 +102,7 @@ app_ui = ui.page_navbar(
                 #     ui.output_data_frame("summary_features"),
                 #     full_screen=True,
                 # ),
-                col_widths=(7, 5),
+                col_widths=(8, 4),
             ),
             fillable=True,
         ),
@@ -297,6 +298,7 @@ def server(input, output, session):
                 x=vol_importances,
                 y=vol_features,
                 orientation='h',
+                marker=dict(color=px.colors.qualitative.Plotly[2]),
                 name="Volume Model"
             ),
             row=2, col=1
@@ -308,6 +310,7 @@ def server(input, output, session):
                 x=base_importances,
                 y=base_features,
                 orientation='h',
+                marker=dict(color=px.colors.qualitative.Plotly[1]),
                 name="Base Model"
             ),
             row=1, col=1
@@ -335,6 +338,7 @@ def server(input, output, session):
                     x=stock["bucket"],
                     y=stock['volatility'],
                     mode="lines",
+                    line=dict(color=px.colors.qualitative.Plotly[0]),
                     name='Realised Volatility',
                 )
             )
@@ -343,6 +347,7 @@ def server(input, output, session):
                     x=stock["bucket"],
                     y=stock['base_pred'],
                     mode="lines",
+                    line=dict(color=px.colors.qualitative.Plotly[2]),
                     name='Predicted Volatility (Base)',
                 )
             )
@@ -351,6 +356,7 @@ def server(input, output, session):
                     x=stock["bucket"],
                     y=stock['base_pred'] - stock['vol_pred'],
                     mode="lines",
+                    line=dict(color=px.colors.qualitative.Plotly[1]),
                     name='Predicted Volatility (Volume)',
                 )
             )
