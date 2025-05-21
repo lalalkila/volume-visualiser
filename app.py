@@ -495,7 +495,7 @@ def server(input, output, session):
         md = ui.markdown(
             """
             # ▶️ How To Use The Shiny App  
-
+              
             1. **Upload your file** using the upload panel.
             2. After upload, **select a specific `stock_id` and `time_id`** from the dropdown menus.
             3. The model will process the input and provide predictions and insights.
