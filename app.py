@@ -43,13 +43,6 @@ app_ui = ui.page_navbar(
             ui.output_ui("data_intro")
         )
     ),
-    ui.nav_panel(
-        "How To Use",
-        ui.layout_columns(
-            ui.output_ui("guide_app")
-        )
-    ),
-
 
     # Second tab - Main dashboard
     ui.nav_panel(
@@ -79,11 +72,8 @@ app_ui = ui.page_navbar(
                 # ),  
             ),
             ui.layout_column_wrap(
-                ui.value_box(
-                    "Number of timeIDs",
-                    ui.output_text("count"),
-                    showcase=icon_svg("calendar"),
-                ),
+                ui.output_ui("count"),
+
                 # ui.value_box( # Added a second value box, but it seems to do the same thing.
                 #     "Model training time",
                 #     ui.output_text("count1"),
@@ -101,7 +91,7 @@ app_ui = ui.page_navbar(
             ui.layout_columns(
                 ui.card(
                     ui.card_header("Model explorer"),
-                    output_widget("prediction"),
+                    ui.output_ui("model_explorer_content"),
                     full_screen=True,
                 ),
                 ui.card(
@@ -124,6 +114,7 @@ app_ui = ui.page_navbar(
     title="Volume predictions",
     window_title="Volume predictions",
     fillable=True,
+    
 )
 
 
@@ -339,6 +330,33 @@ def server(input, output, session):
         return fig
 
         
+    @render.ui  
+    def model_explorer_content():  
+        if data.get().empty:
+            return ui.markdown("""
+            ### 📊 Welcome to the Model Explorer 
+
+            Please upload a CSV file to get started. The data should include:
+            - `stock_id`
+            - `time_id`
+            - `seconds_in_bucket`
+            - `bid_price1`
+            - `ask_price1`
+            - `bid_price2`
+            - `ask_price2`
+
+            > Make sure the CSV uses tab (`\\t`) as a delimiter.
+
+
+            After loading, you'll be able to:
+            - Select a stock and time ID
+            - View model predictions and feature importance
+
+            """)
+        
+        else:
+            return output_widget("prediction")
+    
     @render_widget  
     def prediction():  
         if get_vol_residual().empty or filtered_df().empty or input.timeid() is None:
@@ -431,15 +449,32 @@ def server(input, output, session):
         return fig
 
 
-    @render.text
+    @render.ui
     def count():
         # Depend on data.  This is the key change.
+        if data.get().empty:
+            return ui.value_box(
+                    "Number of timeIDs",
+                    "0",
+                    showcase=icon_svg("calendar"),
+                ),
         df = data.get()
-        return str(df["time_id"].unique().shape[0])
+        return ui.value_box(
+                    "Number of timeIDs",
+                    str(df["time_id"].unique().shape[0]),
+                    showcase=icon_svg("calendar"),
+                ),
 
     @render.ui
     @reactive.event(base_runtime, vol_runtime)
     def traintime():
+        if data.get().empty:
+            return ui.value_box(
+                "Model training time",
+                "0.00 seconds",
+                showcase=icon_svg("paper-plane"),
+                theme="text-black",
+            )   
         return ui.value_box(
             "Model training time",
             f"{np.round(base_runtime.get() + vol_runtime.get(), 4)} seconds",
@@ -447,26 +482,25 @@ def server(input, output, session):
             theme="text-green" if base_runtime.get() + vol_runtime.get() < 1 else "text-red",
         )
 
-    @render.text
-    def count3():
-        if stock_features().empty:
-            return 0
-        increase = np.round((1 - np.sqrt(np.mean(np.square(get_residual()['vol_residual']))) / np.sqrt(np.mean(np.square(get_residual()['residual'])))) * 100, 2)
-        return f"{'+' if increase > 0 else ''}{increase}%"
+    # @render.text
+    # def count3():
+    #     increase = np.round((1 - np.sqrt(np.mean(np.square(get_residual()['vol_residual']))) / np.sqrt(np.mean(np.square(get_residual()['residual'])))) * 100, 2)
+    #     return f"{'+' if increase > 0 else ''}{increase}%"
     
     @render.ui
-    @reactive.event(get_residual)
+    @reactive.event(get_residual, get_vol_residual)
     def improvement():
-        if get_residual().empty:
+        if data.get().empty:
             return ui.value_box(
-                "Volume adjusted increase in RMSE",
+                "RMSE increase (Volume Model)",
                 "0.00%",
                 showcase=icon_svg("bullseye"),
                 theme="text-black",
             )
-        increase = np.round((1 - np.sqrt(np.mean(np.square(get_residual()['vol_residual']))) / np.sqrt(np.mean(np.square(get_residual()['residual'])))) * 100, 2)
+        
+        increase = np.round((1 - np.sqrt(np.mean(np.square(get_vol_residual()['vol_residual']))) / np.sqrt(np.mean(np.square(get_residual()['residual'])))) * 100, 2)
         return ui.value_box(
-            "Volume adjusted increase in RMSE",
+            "RMSE increase (Volume Model)",
             f"{'+' if increase > 0 else ''}{increase}%",
             showcase=icon_svg("bullseye"),
             theme="text-green" if increase > 0 else "text-red",
@@ -529,50 +563,5 @@ def server(input, output, session):
 
         return ui.div(md, class_="my-3")
     
-    @render.ui
-    def guide_app():
-
-        md = ui.markdown(
-            """
-            # ▶️ How To Use The Shiny App  
-              
-            1. **Upload your file** using the upload panel.
-            2. After upload, **select a specific `stock_id` and `time_id`** from the dropdown menus.
-            3. The model will process the input and provide predictions and insights.
-
-            ---
-
-            ## 📊 Output Tabs
-
-            - **Tab **tobefill**** – Displays the **predicted volatility** vs **realised volatility** for the selected stock and time.
-            - **Tab **tobefill**** – Shows the **feature importance** used by the model for prediction.
-            - **Metrics Overview** – Key performance metrics (**tobefill**) are shown **above** the output tabs.
-
-
-            ---
-
-            ## 📄 Accepted Input Format for CSV Upload
-
-            Your CSV file must follow these **requirements**:
-
-            - **File Type**: `.csv`
-            - **Delimiter**: Tab (`\\t`)
-            - **Encoding**: UTF-8
-            - **Header**: Must include all of the following columns **exactly as below**
-
-            ### ✅ Required Columns:
-            stock_id|time_id|seconds_in_bucket|bid_price1|ask_price1|bid_price2|ask_price2|bid_size1|ask_size1|bid_size2|ask_size2
-
-            ### ⚠️ Notes
-
-            - Column order must be preserved.
-            - Extra columns will be ignored, but missing any required column will result in an error.
-            - Values must be numeric (except for `stock_id` and `time_id` which may be integers).
-
-
-            """,
-        )
-
-        return ui.div(md, class_="my-3")
 
 app = App(app_ui, server)
