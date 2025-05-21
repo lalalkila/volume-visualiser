@@ -1,7 +1,10 @@
+import time
+
 from faicons import icon_svg
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+import plotly.express as px
 import plotly.subplots as sp
 
 from xgboost import XGBRegressor
@@ -15,6 +18,8 @@ from shiny import App, reactive, render, ui
 from shinywidgets import output_widget, render_widget  
 
 data = reactive.Value(df)
+base_runtime = reactive.Value(0)
+vol_runtime = reactive.Value(0)
 bucket_size = 30
 features = [
     'ma5',
@@ -79,16 +84,18 @@ app_ui = ui.page_navbar(
                     ui.output_text("count"),
                     showcase=icon_svg("calendar"),
                 ),
-                ui.value_box( # Added a second value box, but it seems to do the same thing.
-                    "Base Model RMSE",
-                    ui.output_text("count1"),
-                    showcase=icon_svg("robot"),
-                ),
-                ui.value_box( # Added a third value box, but it seems to do the same thing.
-                    "Volume Model RMSE",
-                    ui.output_text("count3"),
-                    showcase=icon_svg("cube"),
-                ),
+                # ui.value_box( # Added a second value box, but it seems to do the same thing.
+                #     "Model training time",
+                #     ui.output_text("count1"),
+                #     showcase=icon_svg("robot"),
+                # ),
+                ui.output_ui("traintime"),
+                ui.output_ui("improvement"),
+                # ui.value_box( # Added a third value box, but it seems to do the same thing.
+                #     "Volume adjusted increase in RMSE",
+                #     ui.output_text("count3"),
+                #     showcase=icon_svg("cube"),
+                # ),
                 fill=False,
             ),
             ui.layout_columns(
@@ -107,6 +114,7 @@ app_ui = ui.page_navbar(
                 #     ui.output_data_frame("summary_features"),
                 #     full_screen=True,
                 # ),
+                col_widths=(8, 4),
             ),
             fillable=True,
         ),
@@ -218,9 +226,11 @@ def server(input, output, session):
         y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]  
         # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
         y_train_scaled = y_train * 10000
-
+        start = time.time()
         model = XGBRegressor() 
         model.fit(X_train, y_train_scaled)
+        end = time.time()
+        base_runtime.set(end - start)
         print("Base model fitted:", model)
         return model
     
@@ -246,9 +256,11 @@ def server(input, output, session):
         y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]  
         # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
         y_train_scaled = y_train * 10000
-
+        start = time.time()
         model = XGBRegressor() 
         model.fit(X_train, y_train_scaled)
+        end = time.time()
+        vol_runtime.set(end - start)
         print("Vol model fitted:", model)
         print(X_train.head())
         print(y_train_scaled.head())
@@ -292,19 +304,8 @@ def server(input, output, session):
 
         # Create subplot with 2 rows
         fig = sp.make_subplots(
-            rows=1, cols=2,
+            rows=2, cols=1,
             subplot_titles=("Base Model Feature Importance", "Volume Model Feature Importance")
-        )
-
-        # Base model bar chart
-        fig.add_trace(
-            go.Bar(
-                x=base_importances,
-                y=base_features,
-                orientation='h',
-                name="Base Model"
-            ),
-            row=1, col=1
         )
 
         # Volume model bar chart
@@ -313,15 +314,26 @@ def server(input, output, session):
                 x=vol_importances,
                 y=vol_features,
                 orientation='h',
+                marker=dict(color=px.colors.qualitative.Plotly[1]),
                 name="Volume Model"
             ),
-            row=1, col=2
+            row=2, col=1
+        )
+
+        # Base model bar chart
+        fig.add_trace(
+            go.Bar(
+                x=base_importances,
+                y=base_features,
+                orientation='h',
+                marker=dict(color=px.colors.qualitative.Plotly[2]),
+                name="Base Model"
+            ),
+            row=1, col=1
         )
 
         fig.update_layout(
-            height=400,
             showlegend=False,
-            margin=dict(l=40, r=40, t=40, b=40),
         )
 
         return fig
@@ -340,6 +352,7 @@ def server(input, output, session):
                     x=stock["bucket"],
                     y=stock['volatility'],
                     mode="lines",
+                    line=dict(color=px.colors.qualitative.Plotly[0]),
                     name='Realised Volatility',
                 )
             )
@@ -348,6 +361,7 @@ def server(input, output, session):
                     x=stock["bucket"],
                     y=stock['base_pred'],
                     mode="lines",
+                    line=dict(color=px.colors.qualitative.Plotly[2]),
                     name='Predicted Volatility (Base)',
                 )
             )
@@ -356,6 +370,7 @@ def server(input, output, session):
                     x=stock["bucket"],
                     y=stock['base_pred'] - stock['vol_pred'],
                     mode="lines",
+                    line=dict(color=px.colors.qualitative.Plotly[1]),
                     name='Predicted Volatility (Volume)',
                 )
             )
@@ -422,17 +437,42 @@ def server(input, output, session):
         df = data.get()
         return str(df["time_id"].unique().shape[0])
 
-    @render.text
-    def count1(): #Fixes count2 to be unique
-        if stock_features().empty:
-            return 0
-        return np.sqrt(np.mean(np.square(get_residual()['residual'])))
+    @render.ui
+    @reactive.event(base_runtime, vol_runtime)
+    def traintime():
+        return ui.value_box(
+            "Model training time",
+            f"{np.round(base_runtime.get() + vol_runtime.get(), 4)} seconds",
+            showcase=icon_svg("paper-plane"),
+            theme="text-green" if base_runtime.get() + vol_runtime.get() < 1 else "text-red",
+        )
 
     @render.text
     def count3():
         if stock_features().empty:
             return 0
-        return np.sqrt(np.mean(np.square(get_vol_residual()['vol_residual'])))
+        increase = np.round((1 - np.sqrt(np.mean(np.square(get_residual()['vol_residual']))) / np.sqrt(np.mean(np.square(get_residual()['residual'])))) * 100, 2)
+        return f"{'+' if increase > 0 else ''}{increase}%"
+    
+    @render.ui
+    @reactive.event(get_residual)
+    def improvement():
+        if get_residual().empty:
+            return ui.value_box(
+                "Volume adjusted increase in RMSE",
+                "0.00%",
+                showcase=icon_svg("bullseye"),
+                theme="text-black",
+            )
+        increase = np.round((1 - np.sqrt(np.mean(np.square(get_residual()['vol_residual']))) / np.sqrt(np.mean(np.square(get_residual()['residual'])))) * 100, 2)
+        return ui.value_box(
+            "Volume adjusted increase in RMSE",
+            f"{'+' if increase > 0 else ''}{increase}%",
+            showcase=icon_svg("bullseye"),
+            theme="text-green" if increase > 0 else "text-red",
+        )
+        # increase = np.round((1 - np.sqrt(np.mean(np.square(get_residual()['vol_residual']))) / np.sqrt(np.mean(np.square(get_residual()['residual'])))) * 100, 2)
+        # return f"{'+' if increase > 0 else ''}{increase}%"
     
     @render.ui
     def data_intro():
