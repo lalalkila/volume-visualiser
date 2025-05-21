@@ -43,6 +43,12 @@ app_ui = ui.page_navbar(
             ui.output_ui("data_intro")
         )
     ),
+    ui.nav_panel(
+        "How To Use",
+        ui.layout_columns(
+            ui.output_ui("guide_app")
+        )
+    ),
 
 
     # Second tab - Main dashboard
@@ -63,14 +69,14 @@ app_ui = ui.page_navbar(
                     [],  # Start with empty choices, to be updated later
                     selected=None,
                 ),
-                ui.input_selectize(  
-                    "display_features",  
-                    "Select features below (Max 4):",  
-                    {feature : feature for feature in features},
-                    selected=['ad', 'bd', 'OBV', 'Volume_MA'],  
-                    multiple=True,  
-                    options={'maxItems': 4},
-                ),  
+                # ui.input_selectize(  
+                #     "display_features",  
+                #     "Select features below (Max 4):",  
+                #     {feature : feature for feature in features},
+                #     selected=['ad', 'bd', 'OBV', 'Volume_MA'],  
+                #     multiple=True,  
+                #     options={'maxItems': 4},
+                # ),  
             ),
             ui.layout_column_wrap(
                 ui.value_box(
@@ -474,7 +480,6 @@ def server(input, output, session):
         md = ui.markdown(
             """
             # 📈 Volatility Prediction Shiny App  
-  
 
             ### Adjusted Residual Model with Volume Features
 
@@ -518,9 +523,56 @@ def server(input, output, session):
 
             - Customization: Choose different dataset, time id and features to predict and visualise
 
+
             """,
         )
 
-        return ui.div(md, class_="my-3 lead")
+        return ui.div(md, class_="my-3")
+    
+    @render.ui
+    def guide_app():
+
+        md = ui.markdown(
+            """
+            # ▶️ How To Use The Shiny App  
+
+            1. **Upload your file** using the upload panel.
+            2. After upload, **select a specific `stock_id` and `time_id`** from the dropdown menus.
+            3. The model will process the input and provide predictions and insights.
+
+            ---
+
+            ## 📊 Output Tabs
+
+            - **Tab **tobefill**** – Displays the **predicted volatility** vs **realised volatility** for the selected stock and time.
+            - **Tab **tobefill**** – Shows the **feature importance** used by the model for prediction.
+            - **Metrics Overview** – Key performance metrics (**tobefill**) are shown **above** the output tabs.
+
+
+            ---
+
+            ## 📄 Accepted Input Format for CSV Upload
+
+            Your CSV file must follow these **requirements**:
+
+            - **File Type**: `.csv`
+            - **Delimiter**: Tab (`\\t`)
+            - **Encoding**: UTF-8
+            - **Header**: Must include all of the following columns **exactly as below**
+
+            ### ✅ Required Columns:
+            stock_id|time_id|seconds_in_bucket|bid_price1|ask_price1|bid_price2|ask_price2|bid_size1|ask_size1|bid_size2|ask_size2
+
+            ### ⚠️ Notes
+
+            - Column order must be preserved.
+            - Extra columns will be ignored, but missing any required column will result in an error.
+            - Values must be numeric (except for `stock_id` and `time_id` which may be integers).
+
+
+            """,
+        )
+
+        return ui.div(md, class_="my-3")
 
 app = App(app_ui, server)
