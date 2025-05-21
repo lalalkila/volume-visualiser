@@ -308,7 +308,7 @@ def server(input, output, session):
                 x=vol_importances,
                 y=vol_features,
                 orientation='h',
-                marker=dict(color=px.colors.qualitative.Plotly[2]),
+                marker=dict(color=px.colors.qualitative.Plotly[1]),
                 name="Volume Model"
             ),
             row=2, col=1
@@ -320,17 +320,14 @@ def server(input, output, session):
                 x=base_importances,
                 y=base_features,
                 orientation='h',
-                marker=dict(color=px.colors.qualitative.Plotly[1]),
+                marker=dict(color=px.colors.qualitative.Plotly[2]),
                 name="Base Model"
             ),
             row=1, col=1
         )
 
         fig.update_layout(
-            height=400,
-            width=350,
             showlegend=False,
-            margin=dict(l=40, r=40, t=40, b=40),
         )
 
         return fig
@@ -434,20 +431,13 @@ def server(input, output, session):
         df = data.get()
         return str(df["time_id"].unique().shape[0])
 
-    # @render.text
-    # def count1(): #Fixes count2 to be unique
-    #     # if stock_features().empty:
-    #     #     return 0
-    #     # return np.sqrt(np.mean(np.square(get_residual()['residual'])))
-    #     return f"{np.round(base_runtime.get() + vol_runtime.get(),4)} seconds"
-
     @render.ui
     @reactive.event(base_runtime, vol_runtime)
     def traintime():
         return ui.value_box(
             "Model training time",
             f"{np.round(base_runtime.get() + vol_runtime.get(), 4)} seconds",
-            showcase=icon_svg("robot"),
+            showcase=icon_svg("paper-plane"),
             theme="text-green" if base_runtime.get() + vol_runtime.get() < 1 else "text-red",
         )
 
@@ -465,14 +455,14 @@ def server(input, output, session):
             return ui.value_box(
                 "Volume adjusted increase in RMSE",
                 "0.00%",
-                showcase=icon_svg("cube"),
+                showcase=icon_svg("bullseye"),
                 theme="text-black",
             )
         increase = np.round((1 - np.sqrt(np.mean(np.square(get_residual()['vol_residual']))) / np.sqrt(np.mean(np.square(get_residual()['residual'])))) * 100, 2)
         return ui.value_box(
             "Volume adjusted increase in RMSE",
             f"{'+' if increase > 0 else ''}{increase}%",
-            showcase=icon_svg("cube"),
+            showcase=icon_svg("bullseye"),
             theme="text-green" if increase > 0 else "text-red",
         )
         # increase = np.round((1 - np.sqrt(np.mean(np.square(get_residual()['vol_residual']))) / np.sqrt(np.mean(np.square(get_residual()['residual'])))) * 100, 2)
