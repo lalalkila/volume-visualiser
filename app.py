@@ -96,7 +96,8 @@ app_ui = ui.page_navbar(
                 ),
                 ui.card(
                     ui.card_header("Feature Importance"),
-                    output_widget("feature_plots"),
+                    # output_widget("feature_plots"),
+                    output_widget("feature_plots_linear"),
                     full_screen=True,
                 ),
                 # ui.card(
@@ -218,7 +219,7 @@ def server(input, output, session):
         # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
         y_train_scaled = y_train * 10000
         start = time.time()
-        model = XGBRegressor() 
+        model = LinearRegression() 
         model.fit(X_train, y_train_scaled)
         end = time.time()
         base_runtime.set(end - start)
@@ -265,7 +266,7 @@ def server(input, output, session):
             return pd.DataFrame()
         stock = get_residual()
         stock['vol_pred'] = vol_model().predict(stock[VOL_MODEL_FEATURES]) / 10000
-        stock['vol_residual'] = stock['residual'] - stock['vol_pred']
+        stock['vol_residual'] = stock['vol_pred']
         return stock
     
     @render.data_frame
@@ -328,6 +329,42 @@ def server(input, output, session):
         )
 
         return fig
+    
+    @render_widget
+    def feature_plots_linear():
+        if base_model() is None or vol_model() is None:
+            return None
+        
+        base = base_model()
+        vol = vol_model()
+
+        if not hasattr(vol, "feature_importances_"):
+            return None
+
+        vol_importances = vol.feature_importances_
+        vol_features = VOL_MODEL_FEATURES
+
+        fig = go.Figure()
+
+        fig.add_trace(
+            go.Bar(
+                x=vol_importances,
+                y=vol_features,
+                orientation='h',
+                marker=dict(color=px.colors.qualitative.Plotly[1]),
+                name="Volume Model"
+            )
+        )
+
+        fig.update_layout(
+            title="Volume Model Feature Importances",
+            showlegend=False,
+            height=400,
+            margin=dict(l=100, r=40, t=40, b=40)
+        )
+
+        return fig
+
 
         
     @render.ui  
@@ -364,6 +401,9 @@ def server(input, output, session):
         
         stock = get_vol_residual()[get_vol_residual()["time_id"] == int(input.timeid())]
 
+        # Show prediction on data that is not trained on only
+        split_index = int(len(stock) * 0.8)
+
         fig = go.Figure()
         fig.add_trace(
                 go.Scatter(
@@ -376,17 +416,17 @@ def server(input, output, session):
             )
         fig.add_trace(
                 go.Scatter(
-                    x=stock["bucket"],
-                    y=stock['base_pred'],
+                    x=stock["bucket"][split_index:],
+                    y=stock['base_pred'][split_index:],
                     mode="lines",
                     line=dict(color=px.colors.qualitative.Plotly[2]),
                     name='Predicted Volatility (Base)',
-                )
+                )   
             )
         fig.add_trace(
                 go.Scatter(
-                    x=stock["bucket"],
-                    y=stock['base_pred'] - stock['vol_pred'],
+                    x=stock["bucket"][split_index:],
+                    y=stock['base_pred'][split_index:] + stock['vol_pred'][split_index:],
                     mode="lines",
                     line=dict(color=px.colors.qualitative.Plotly[1]),
                     name='Predicted Volatility (Volume)',
