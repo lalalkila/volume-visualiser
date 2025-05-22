@@ -32,8 +32,8 @@ features = [
     'VWAP',
     'Volume_MA',
 ]
-
-VOL_MODEL_FEATURES = ['volatility', 'ma5', 'bs_ratio', 'bs_chg', 'bd', 'ad',  'OBV', 'VWAP', 'Volume_MA']
+BASE_MODEL_FEATURES = ['volatility', 'ma5']
+VOL_MODEL_FEATURES = ['bs_ratio', 'bs_chg', 'bd', 'ad',  'OBV', 'VWAP', 'Volume_MA']
 
 app_ui = ui.page_navbar(
     ui.nav_spacer(),
@@ -209,7 +209,7 @@ def server(input, output, session):
         if data.get().empty:
             return pd.DataFrame()
         stock = model_data()
-        X = stock[['volatility', 'ma5']]
+        X = stock[BASE_MODEL_FEATURES]
         y = stock['future']
         stock = stock.sort_values(["time_id", "bucket"])
         split_index = int(len(stock) * 0.8)
@@ -230,7 +230,7 @@ def server(input, output, session):
         if data.get().empty:
             return pd.DataFrame()
         stock = model_data()
-        stock['base_pred'] = base_model().predict(stock[['volatility', 'ma5']]) / 10000
+        stock['base_pred'] = base_model().predict(stock[BASE_MODEL_FEATURES]) / 10000
         stock['residual'] = stock['future'] - stock['base_pred']
         return stock
     
@@ -287,7 +287,7 @@ def server(input, output, session):
 
         # Get feature importances from both models
         base_importances = base.feature_importances_
-        base_features = ['volatility', 'ma5']
+        base_features = BASE_MODEL_FEATURES
         
         vol_importances = vol.feature_importances_
         vol_features = VOL_MODEL_FEATURES
@@ -368,7 +368,7 @@ def server(input, output, session):
         fig.add_trace(
                 go.Scatter(
                     x=stock["bucket"],
-                    y=stock['volatility'],
+                    y=stock['future'],
                     mode="lines",
                     line=dict(color=px.colors.qualitative.Plotly[0]),
                     name='Realised Volatility',
