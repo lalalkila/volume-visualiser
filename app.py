@@ -219,7 +219,7 @@ def server(input, output, session):
         # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
         y_train_scaled = y_train * 10000
         start = time.time()
-        model = XGBRegressor() 
+        model = LinearRegression() 
         model.fit(X_train, y_train_scaled)
         end = time.time()
         base_runtime.set(end - start)
@@ -264,7 +264,7 @@ def server(input, output, session):
         stock = get_residual()
         stock['vol_pred'] = vol_model().predict(stock[VOL_MODEL_FEATURES]) / 10000
         stock['vol_residual'] = stock['future'] - (stock['base_pred'] + stock['vol_pred'])
-
+        
         return stock
     
     @render.data_frame
