@@ -32,7 +32,7 @@ features = [
     'VWAP',
     'Volume_MA',
 ]
-BASE_MODEL_FEATURES = ['volatility', 'ma5']
+BASE_MODEL_FEATURES = ['ma5', 'mid_price', 'spread_lvl_1', 'spread_lvl_2']
 VOL_MODEL_FEATURES = ['bs_ratio', 'bs_chg', 'bd', 'ad',  'OBV', 'VWAP', 'Volume_MA']
 
 app_ui = ui.page_navbar(
@@ -222,7 +222,7 @@ def server(input, output, session):
         model.fit(X_train, y_train_scaled)
         end = time.time()
         base_runtime.set(end - start)
-        print("Base model fitted:", model)
+
         return model
     
     @reactive.calc
@@ -232,6 +232,7 @@ def server(input, output, session):
         stock = model_data()
         stock['base_pred'] = base_model().predict(stock[BASE_MODEL_FEATURES]) / 10000
         stock['residual'] = stock['future'] - stock['base_pred']
+
         return stock
     
     @reactive.calc
@@ -252,10 +253,6 @@ def server(input, output, session):
         model.fit(X_train, y_train_scaled)
         end = time.time()
         vol_runtime.set(end - start)
-        print("Vol model fitted:", model)
-        print(X_train.head())
-        print(y_train_scaled.head())
-        print(model.feature_importances_)
 
         return model
     
@@ -265,7 +262,7 @@ def server(input, output, session):
             return pd.DataFrame()
         stock = get_residual()
         stock['vol_pred'] = vol_model().predict(stock[VOL_MODEL_FEATURES]) / 10000
-        stock['vol_residual'] = stock['residual'] - stock['vol_pred']
+        stock['vol_residual'] = stock['future'] - (stock['base_pred'] + stock['vol_pred'])
         return stock
     
     @render.data_frame
@@ -363,6 +360,7 @@ def server(input, output, session):
             return None
         
         stock = get_vol_residual()[get_vol_residual()["time_id"] == int(input.timeid())]
+        split_index = int(len(stock) * 0.8)
 
         fig = go.Figure()
         fig.add_trace(
@@ -376,8 +374,8 @@ def server(input, output, session):
             )
         fig.add_trace(
                 go.Scatter(
-                    x=stock["bucket"],
-                    y=stock['base_pred'],
+                    x=stock["bucket"][split_index:],
+                    y=stock['base_pred'][split_index:],
                     mode="lines",
                     line=dict(color=px.colors.qualitative.Plotly[2]),
                     name='Predicted Volatility (Base)',
@@ -385,8 +383,8 @@ def server(input, output, session):
             )
         fig.add_trace(
                 go.Scatter(
-                    x=stock["bucket"],
-                    y=stock['base_pred'] - stock['vol_pred'],
+                    x=stock["bucket"][split_index:],
+                    y=stock['base_pred'][split_index:] + stock['vol_pred'][split_index:],
                     mode="lines",
                     line=dict(color=px.colors.qualitative.Plotly[1]),
                     name='Predicted Volatility (Volume)',
@@ -404,49 +402,49 @@ def server(input, output, session):
 
         return fig
     
-    @render_widget  
-    def residual():  
-        if get_vol_residual().empty or filtered_df().empty or input.timeid() is None:
-            return None
+    # @render_widget  
+    # def residual():  
+    #     if get_vol_residual().empty or filtered_df().empty or input.timeid() is None:
+    #         return None
         
-        stock = get_vol_residual()[get_vol_residual()["time_id"] == int(input.timeid())]
+    #     stock = get_vol_residual()[get_vol_residual()["time_id"] == int(input.timeid())]
 
-        fig = go.Figure()
-        fig.add_trace(
-                go.Scatter(
-                    x=filtered_df()["bucket"],
-                    y=filtered_df()['volatility'],
-                    mode="lines",
-                    name='volatility',
-                )
-            )
-        fig.add_trace(
-                go.Scatter(
-                    x=stock["bucket"],
-                    y=stock['base_pred'],
-                    mode="lines",
-                    name='Base Model',
-                )
-            )
-        fig.add_trace(
-                go.Scatter(
-                    x=stock["bucket"],
-                    y=stock['base_pred'] - stock['vol_pred'],
-                    mode="lines",
-                    name='Volume Model',
-                )
-            )
+    #     fig = go.Figure()
+    #     fig.add_trace(
+    #             go.Scatter(
+    #                 x=filtered_df()["bucket"],
+    #                 y=filtered_df()['volatility'],
+    #                 mode="lines",
+    #                 name='volatility',
+    #             )
+    #         )
+    #     fig.add_trace(
+    #             go.Scatter(
+    #                 x=stock["bucket"],
+    #                 y=stock['base_pred'],
+    #                 mode="lines",
+    #                 name='Base Model',
+    #             )
+    #         )
+    #     fig.add_trace(
+    #             go.Scatter(
+    #                 x=stock["bucket"],
+    #                 y=stock['base_pred'] - stock['vol_pred'],
+    #                 mode="lines",
+    #                 name='Volume Model',
+    #             )
+    #         )
         
-        fig.update_layout(
-            legend=dict(
-                x=1.02,        # Slightly outside the main plot (right side)
-                y=0.5,         # Middle vertically
-                xanchor='left',
-                yanchor='middle'
-            )
-        )
+    #     fig.update_layout(
+    #         legend=dict(
+    #             x=1.02,        # Slightly outside the main plot (right side)
+    #             y=0.5,         # Middle vertically
+    #             xanchor='left',
+    #             yanchor='middle'
+    #         )
+    #     )
 
-        return fig
+    #     return fig
 
 
     @render.ui
@@ -492,18 +490,22 @@ def server(input, output, session):
     def improvement():
         if data.get().empty:
             return ui.value_box(
-                "RMSE increase (Volume Model)",
+                "RMSE Drop (Base → Final)",
                 "0.00%",
                 showcase=icon_svg("bullseye"),
                 theme="text-black",
             )
         
-        increase = np.round((1 - np.sqrt(np.mean(np.square(get_vol_residual()['vol_residual']))) / np.sqrt(np.mean(np.square(get_residual()['residual'])))) * 100, 2)
+        vol_rmse = np.sqrt(np.mean(np.square(get_vol_residual()['vol_residual'])))
+        base_rmse = np.sqrt(np.mean(np.square(get_residual()['residual'])))
+
+        decrease = np.round((1 - vol_rmse / base_rmse) * 100, 2)
+
         return ui.value_box(
-            "RMSE increase (Volume Model)",
-            f"{'+' if increase > 0 else ''}{increase}%",
+            "RMSE Drop (Base → Final)",
+            f"{'-' if decrease > 0 else ''}{decrease}%",
             showcase=icon_svg("bullseye"),
-            theme="text-green" if increase > 0 else "text-red",
+            theme="text-green" if decrease > 0 else "text-red",
         )
         # increase = np.round((1 - np.sqrt(np.mean(np.square(get_residual()['vol_residual']))) / np.sqrt(np.mean(np.square(get_residual()['residual'])))) * 100, 2)
         # return f"{'+' if increase > 0 else ''}{increase}%"

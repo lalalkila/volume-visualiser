@@ -26,7 +26,10 @@ def get_stock_characteristics(stock : pd.DataFrame) -> pd.DataFrame:
 
 def get_stock_feature(stock : pd.DataFrame) -> pd.DataFrame:
     stock['ma5'] = stock['volatility'].rolling(window=5).mean()
-    stock['ma10'] = stock['volatility'].rolling(window=10).mean()
+    stock['mid_price'] = (stock['bid_price1'] + stock['ask_price1']) / 2
+    stock['spread_lvl_1'] = stock['bid_price1'] - stock['ask_price1']
+    stock['spread_lvl_2'] = stock['bid_price2'] - stock['ask_price2']
+
 
     stock['future'] = stock['volatility'].shift(-1)
     return stock
