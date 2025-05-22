@@ -490,20 +490,24 @@ def server(input, output, session):
     def improvement():
         if data.get().empty:
             return ui.value_box(
-                "RMSE Drop (Base → Final)",
+                "Volume model account for",
                 "0.00%",
+                "of previously unexplained variance",
                 showcase=icon_svg("bullseye"),
-                theme="text-black",
+                theme="text-black"
             )
         
         vol_rmse = np.sqrt(np.mean(np.square(get_vol_residual()['vol_residual'])))
         base_rmse = np.sqrt(np.mean(np.square(get_residual()['residual'])))
 
-        decrease = np.round((1 - vol_rmse / base_rmse) * 100, 2)
+        decrease =  np.mean((get_vol_residual()['residual'] - get_vol_residual()['vol_residual']) / get_vol_residual()['residual']) * 100
+
+        # decrease = np.round((1 - vol_rmse / base_rmse) * 100, 2)
 
         return ui.value_box(
-            "RMSE Drop (Base → Final)",
-            f"{'-' if decrease > 0 else ''}{decrease}%",
+            "Volume model account for",
+            f"{decrease:.2f}%",
+            "of previously unexplained variance",
             showcase=icon_svg("bullseye"),
             theme="text-green" if decrease > 0 else "text-red",
         )
