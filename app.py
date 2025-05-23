@@ -159,6 +159,7 @@ def server(input, output, session):
                 df_complete = df_complete.sort_values(by=['stock_id', 'time_id', 'bucket'])
                 
                 data.set(df)
+                
                 ui.update_select(
                     "timeid",
                     label="Choose TimeID:",
@@ -359,8 +360,7 @@ def server(input, output, session):
         if get_vol_residual().empty or filtered_df().empty or input.timeid() is None:
             return None
         
-        stock = get_vol_residual()[get_vol_residual()["time_id"] == int(input.timeid())]
-        split_index = int(len(stock) * 0.8)
+        stock = get_vol_residual()[get_vol_residual()["time_id"] == int(input.timeid())] 
 
         fig = go.Figure()
         fig.add_trace(
@@ -368,14 +368,14 @@ def server(input, output, session):
                     x=stock["bucket"],
                     y=stock['future'],
                     mode="lines",
-                    line=dict(color=px.colors.qualitative.Plotly[0]),
+                    line=dict(color=px.colors.qualitative.Plotly[0]), 
                     name='Realised Volatility',
                 )
             )
         fig.add_trace(
                 go.Scatter(
-                    x=stock["bucket"][split_index:],
-                    y=stock['base_pred'][split_index:],
+                    x=stock["bucket"],
+                    y=stock['base_pred'],
                     mode="lines",
                     line=dict(color=px.colors.qualitative.Plotly[2]),
                     name='Predicted Volatility (Base)',
@@ -383,8 +383,8 @@ def server(input, output, session):
             )
         fig.add_trace(
                 go.Scatter(
-                    x=stock["bucket"][split_index:],
-                    y=stock['base_pred'][split_index:] + stock['vol_pred'][split_index:],
+                    x=stock["bucket"],
+                    y=stock['base_pred'] + stock['vol_pred'],
                     mode="lines",
                     line=dict(color=px.colors.qualitative.Plotly[1]),
                     name='Predicted Volatility (Volume)',
@@ -523,7 +523,7 @@ def server(input, output, session):
 
             ### Adjusted Residual Model with Volume Features
 
-            Welcome to our Shiny app for predicting stock volatility using an **Adjusted Residual Model** that leverages key **volume-driven features**. This tool is designed to assist traders, analysts, and researchers in forecasting short-term price fluctuations by combining traditional volatility modeling with volume-based signals.
+            Welcome to our Shiny app for predicting stock volatility using an **Volume-Adjusted Residual Model** that leverages key **volume-driven features**. This tool is designed to assist traders, analysts, and researchers in forecasting short-term price fluctuations by combining traditional volatility modeling with volume-based signals.
 
             ---
 
@@ -534,8 +534,6 @@ def server(input, output, session):
             ---
 
             ## 🧠 Features Used in the Model
-
-            The model uses a carefully engineered set of volume and price-based features, collectively defined as:
 
             Our model uses the following engineered features, which capture various dimensions of market activity and price-volume interaction:
 
@@ -557,9 +555,11 @@ def server(input, output, session):
 
             ## ⚙️ App Functionality
 
-            - Visualisation: Interactive plots for volatility predictions.
+            - Visualisation: Interactive plots for volatility predictions. (more)
 
-            - Model Diagnostics: Residual analysis and performance metrics.
+            - Model Diagnostics: Residual analysis and performance metrics. (talk about feature importance)
+
+            - Talk about metrics at the top, run time for trader to evaluate smoething
 
             - Customization: Choose different dataset, time id and features to predict and visualise
 
