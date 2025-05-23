@@ -500,9 +500,9 @@ def server(input, output, session):
         vol_rmse = np.sqrt(np.mean(np.square(get_vol_residual()['vol_residual'])))
         base_rmse = np.sqrt(np.mean(np.square(get_residual()['residual'])))
 
-        decrease =  np.mean((get_vol_residual()['residual'] - get_vol_residual()['vol_residual']) / get_vol_residual()['residual']) * 100
-
+        decrease =  np.mean((get_residual()['residual'] - get_vol_residual()['vol_residual']) / get_residual()['residual']) * 100
         # decrease = np.round((1 - vol_rmse / base_rmse) * 100, 2)
+
 
         return ui.value_box(
             "Volume model account for",
