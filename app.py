@@ -10,6 +10,10 @@ import plotly.subplots as sp
 from xgboost import XGBRegressor
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, RobustScaler
+from sklearn.metrics import mean_squared_error
+
+
 
 # Import data from shared.py
 from shared import app_dir, df, get_stock_characteristics, get_stock_feature, get_volume_feature, process_group
@@ -18,22 +22,32 @@ from shiny import App, reactive, render, ui
 from shinywidgets import output_widget, render_widget  
 
 data = reactive.Value(df)
+data_predictions = reactive.Value()
+data_models = reactive.Value({})
 base_runtime = reactive.Value(0)
 vol_runtime = reactive.Value(0)
-bucket_size = 30
-features = [
-    'ma5',
-    'ma10',
-    'bs_ratio',
-    'bs_chg',
-    'bd',
-    'ad',
-    'OBV',
-    'VWAP',
-    'Volume_MA',
-]
-BASE_MODEL_FEATURES = ['volatility','ma5', 'mid_price', 'spread_lvl_1', 'spread_lvl_2']
-VOL_MODEL_FEATURES = ['volatility','bs_ratio', 'bs_chg', 'bd', 'ad',  'OBV', 'VWAP', 'Volume_MA']
+
+
+BUCKET_SIZE = 30
+BASE_MODEL_FEATURES = ['ma5', 'mid_price']
+VOL_MODEL_FEATURES = [
+                      'volume_momentum_5', 'volume_trend',
+                      'cumulative_order_flow', 'volume_volatility',
+                      'bs_volatility', 'bs_momentum', 'volume_percentile',
+                      'volume_ma_interaction', 'bs_volume_interaction'
+                     ]
+XGBPARAMS = {
+             'n_estimators': 200,
+             'max_depth': 4,
+             'learning_rate': 0.05,
+             'subsample': 0.8,
+             'colsample_bytree': 0.8,
+             'reg_alpha': 0.1,
+             'reg_lambda': 1.0,
+             'random_state': 42,
+             'verbosity': 0,
+             'objective': 'reg:squarederror',
+            }
 
 app_ui = ui.page_navbar(
     ui.nav_spacer(),
@@ -51,41 +65,18 @@ app_ui = ui.page_navbar(
             ui.sidebar(
                 ui.input_file("file", "Model Explorer\nUpload a CSV file", accept=".csv"),
                 ui.input_select(
-                    "timeid",
-                    "Time ID",
-                    [],  # Start with empty choices, to be updated later
-                    selected=None,
-                ),
-                ui.input_select(
                     "stockid",
                     "Stock ID",
                     [],  # Start with empty choices, to be updated later
                     selected=None,
                 ),
-                # ui.input_selectize(  
-                #     "display_features",  
-                #     "Select features below (Max 4):",  
-                #     {feature : feature for feature in features},
-                #     selected=['ad', 'bd', 'OBV', 'Volume_MA'],  
-                #     multiple=True,  
-                #     options={'maxItems': 4},
-                # ),  
+ 
             ),
             ui.layout_column_wrap(
-                ui.output_ui("count"),
-
-                # ui.value_box( # Added a second value box, but it seems to do the same thing.
-                #     "Model training time",
-                #     ui.output_text("count1"),
-                #     showcase=icon_svg("robot"),
-                # ),
+                # ui.output_ui("count"),
                 ui.output_ui("traintime"),
                 ui.output_ui("improvement"),
-                # ui.value_box( # Added a third value box, but it seems to do the same thing.
-                #     "Volume adjusted increase in RMSE",
-                #     ui.output_text("count3"),
-                #     showcase=icon_svg("cube"),
-                # ),
+                ui.output_ui("directionalAccuracy"),
                 fill=False,
             ),
             ui.layout_columns(
@@ -99,11 +90,6 @@ app_ui = ui.page_navbar(
                     output_widget("feature_plots"),
                     full_screen=True,
                 ),
-                # ui.card(
-                #     ui.card_header("Data explorer"),
-                #     ui.output_data_frame("summary_features"),
-                #     full_screen=True,
-                # ),
                 col_widths=(8, 4),
             ),
             fillable=True,
@@ -128,15 +114,9 @@ def server(input, output, session):
             try:
                 print(file_info["datapath"])
                 df = pd.read_csv(file_info["datapath"], delimiter='\t')
-                df['bucket'] = np.floor(df['seconds_in_bucket'] / 20)
+                df['bucket'] = np.floor(df['seconds_in_bucket'] / BUCKET_SIZE)
                 df = df.groupby(['stock_id', 'time_id', 'bucket']).mean()[['bid_price1','ask_price1','bid_price2','ask_price2','bid_size1','ask_size1','bid_size2', 'ask_size2']].round(4).reset_index()
                 
-                # # Create full range of time_ids
-                # full_time_ids = pd.DataFrame({'time_id': range(stock['time_id'].min(), stock['time_id'].max() + 1)})
-                
-                # # Merge to add missing ones
-                # stock = full_time_ids.merge(stock, on='time_id', how='left')
-                # stock = stock.sort_values(by=['time_id', 'bucket'])
 
                 # Get all unique stock_ids in the dataframe
                 unique_stock_ids = df['stock_id'].unique()
@@ -150,22 +130,111 @@ def server(input, output, session):
                 template = pd.DataFrame([(stock_id, time_id) 
                                     for stock_id in unique_stock_ids 
                                     for time_id in time_range],
-                                    columns=['stock_id', 'time_id'])
+                                    columns=['stock_id', 'time_id', 'bucket'])
 
                 # Merge the original dataframe with the template
-                df_complete = template.merge(df, on=['stock_id', 'time_id'], how='left')
+                df_complete = template.merge(df, on=['stock_id', 'time_id', 'bucket'], how='left')
 
                 # Sort the result
                 df_complete = df_complete.sort_values(by=['stock_id', 'time_id', 'bucket'])
                 
-                data.set(df)
-                
-                ui.update_select(
-                    "timeid",
-                    label="Choose TimeID:",
-                    choices=df["time_id"].unique().tolist(),
-                    selected=str(df["time_id"].unique()[0]) if not df.empty else None, #handle empty df
-                )
+                data.set(df_complete)
+
+                stock_clean = (df_complete.groupby('stock_id')
+                                .apply(process_group)
+                                .reset_index(drop=True))
+                stock_clean = stock_clean.dropna(how='any').reset_index(drop=True)
+
+
+                results = []
+                base_rmse_by_stock = {}
+                combined_rmse_by_stock = {}
+
+                for stock_id in stock_clean['stock_id'].unique():
+
+                    stock_data = stock_clean[stock_clean['stock_id'] == stock_id].sort_values(['time_id', 'bucket'])
+
+                    scaler_price = StandardScaler()
+                    scaler_volume = RobustScaler()
+
+                    X = stock_data[BASE_MODEL_FEATURES + VOL_MODEL_FEATURES]
+                    y = stock_data['future']
+                    
+                    split_index = int(len(stock_data) * 0.8)
+                    X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
+                    y_train, y_test = y.iloc[:split_index], y.iloc[split_index:] 
+
+                    X_train_price = scaler_price.fit_transform(X_train[BASE_MODEL_FEATURES])
+                    X_test_price = scaler_price.transform(X_test[BASE_MODEL_FEATURES])
+                    X_train_volume = scaler_volume.fit_transform(X_train[VOL_MODEL_FEATURES])
+                    X_test_volume = scaler_volume.transform(X_test[VOL_MODEL_FEATURES])
+
+
+                    # Fit base model
+                    start_time = time.time()
+                    base_model = XGBRegressor(**XGBPARAMS) 
+                    base_model.fit(X_train_price, y_train)
+                    print(X_train_price)
+                    print()
+                    print(y_train)
+                    print()
+                    base_train_time = time.time() - start_time
+
+                    y_pred_base_train = base_model.predict(X_train_price)
+                    y_pred_base_test = base_model.predict(X_test_price)
+                    print(y_pred_base_train)
+                    print()
+                    print(y_pred_base_test)
+
+                    residuals_train = y_train - y_pred_base_train
+
+
+                    # Fit volume model
+                    start_time = time.time()
+                    volume_model = XGBRegressor(**XGBPARAMS) 
+                    volume_model.fit(X_train_volume, residuals_train)
+                    volume_train_time = time.time() - start_time
+
+                    y_pred_volume_train = volume_model.predict(X_train_volume)
+                    y_pred_volume_test = volume_model.predict(X_test_volume)
+
+                    y_pred_combined_train = y_pred_base_train + y_pred_volume_train
+                    y_pred_combined_test = y_pred_base_test + y_pred_volume_test
+
+                    # Combine back together
+                    y_all = pd.concat([y_train, y_test])
+                    y_pred_base_all = np.concatenate([y_pred_base_train, y_pred_base_test])
+                    y_pred_combined_all = np.concatenate([y_pred_combined_train, y_pred_combined_test])
+                    X_all = pd.concat([X_train, X_test])
+                    bucket_all = stock_clean.iloc[y_all.index]["bucket"].values
+
+                    # Final results df
+                    df_results = pd.DataFrame({
+                        "stock_id": stock_id,
+                        "bucket": bucket_all,
+                        "y_true": y_all.values,
+                        "y_pred_base": y_pred_base_all,
+                        "y_pred_combined": y_pred_combined_all
+                    })
+
+                    model_dict = data_models.get() or {}
+                    model_dict[stock_id] = {
+                        "base_model": base_model,
+                        "volume_model": volume_model,
+                        "base_train_time": base_train_time,
+                        "volume_train_time": volume_train_time
+                    }
+                    data_models.set(model_dict)
+
+                    results.append(df_results)
+
+                # Concatenate all into a single DataFrame
+                prediction_df = pd.concat(results, ignore_index=True)
+
+                # Store in reactive value if you want to use it in UI later
+                data_predictions.set(prediction_df)
+
+
                 ui.update_select(
                     "stockid",
                     label="Choose StockID:",
@@ -175,110 +244,15 @@ def server(input, output, session):
             except Exception as e:
                 print(f"Error reading CSV: {e}") # Important: Handle errors!
 
-    @reactive.calc  
-    def filtered_df():
-        df = data.get()
-        if input.timeid() and input.stockid():
-            stock = df[(df["time_id"] == int(input.timeid())) & (df["stock_id"] == int(input.stockid()))]
-            return stock
-        else:
-            return df
     
-    @reactive.calc
-    def stock_features():
-        stock = filtered_df()
-        stock = get_stock_characteristics(stock)
-        stock = get_stock_feature(stock)
-        stock = get_volume_feature(stock)
-        return stock
-    
-    @reactive.calc
-    def model_data():
-        if data.get().empty:
-            return pd.DataFrame()
-        stock = data.get()
-        stock = get_stock_characteristics(stock)
-        stock = get_stock_feature(stock)
-        stock = get_volume_feature(stock)
-        stock = stock.groupby('time_id', group_keys=False).apply(process_group)
-        # stock_with_na = stock.copy()
-        stock = stock.dropna()
-        return stock
-    
-    @reactive.calc
-    def base_model():
-        if data.get().empty:
-            return pd.DataFrame()
-        stock = model_data()
-        X = stock[BASE_MODEL_FEATURES]
-        y = stock['future']
-        stock = stock.sort_values(["time_id", "bucket"])
-        split_index = int(len(stock) * 0.8)
-        X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
-        y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]  
-        # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
-        y_train_scaled = y_train * 10000
-        start = time.time()
-        model = XGBRegressor() 
-        model.fit(X_train, y_train_scaled)
-        end = time.time()
-        base_runtime.set(end - start)
-
-        return model
-    
-    @reactive.calc
-    def get_residual():
-        if data.get().empty:
-            return pd.DataFrame()
-        stock = model_data()
-        stock['base_pred'] = base_model().predict(stock[BASE_MODEL_FEATURES]) / 10000
-        stock['residual'] = stock['future'] - stock['base_pred']
-
-        return stock
-    
-    @reactive.calc
-    def vol_model():
-        if data.get().empty:
-            return pd.DataFrame()
-        stock = get_residual()
-        X = stock[VOL_MODEL_FEATURES]
-        y = stock['residual']
-        stock = stock.sort_values(["time_id", "bucket"])
-        split_index = int(len(stock) * 0.8)
-        X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
-        y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]  
-        # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
-        y_train_scaled = y_train * 10000
-        start = time.time()
-        model = XGBRegressor() 
-        model.fit(X_train, y_train_scaled)
-        end = time.time()
-        vol_runtime.set(end - start)
-
-        return model
-    
-    @reactive.calc
-    def get_vol_residual():
-        if data.get().empty:
-            return pd.DataFrame()
-        stock = get_residual()
-        stock['vol_pred'] = vol_model().predict(stock[VOL_MODEL_FEATURES]) / 10000
-        stock['vol_residual'] = stock['future'] - (stock['base_pred'] + stock['vol_pred'])
-        return stock
-    
-    @render.data_frame
-    def summary_features():
-        if stock_features().empty:
-            return pd.DataFrame()
-        return stock_features()[['time_id', 'bucket', 'WAP', 'log_return', 'volatility', 'ma5', 'ma10', 'future', 'bs_ratio', 'bs_chg', 'bd', 'ad', 'OBV', 'VWAP', 'Volume_MA']].round(4)
-
     @render_widget
     def feature_plots():
-        if base_model() is None or vol_model() is None:
+        if data_predictions.get() is None or input.stockid() is None:
             return None
         
-        base = base_model()
-        vol = vol_model()
+        stock_id = int(input.stockid())
+        base = data_models.get()[stock_id]['base_model']
+        vol = data_models.get()[stock_id]['volume_model']
 
         if not hasattr(base, "feature_importances_") or not hasattr(vol, "feature_importances_"):
             return None
@@ -357,16 +331,21 @@ def server(input, output, session):
     
     @render_widget  
     def prediction():  
-        if get_vol_residual().empty or filtered_df().empty or input.timeid() is None:
+        if data_predictions.get() is None or input.stockid() is None:
             return None
         
-        stock = get_vol_residual()[get_vol_residual()["time_id"] == int(input.timeid())] 
+        stock_id = int(input.stockid())
+
+        stock_full = data_predictions.get()
+        stock = stock_full[stock_full['stock_id'] == stock_id].sort_values(['bucket'])
+        split_index = int(len(stock) * 0.8)
+        stock = stock.iloc[split_index:]
 
         fig = go.Figure()
         fig.add_trace(
                 go.Scatter(
                     x=stock["bucket"],
-                    y=stock['future'],
+                    y=stock['y_true'],
                     mode="lines",
                     line=dict(color=px.colors.qualitative.Plotly[0]), 
                     name='Realised Volatility',
@@ -375,7 +354,7 @@ def server(input, output, session):
         fig.add_trace(
                 go.Scatter(
                     x=stock["bucket"],
-                    y=stock['base_pred'],
+                    y=stock['y_pred_base'],
                     mode="lines",
                     line=dict(color=px.colors.qualitative.Plotly[2]),
                     name='Predicted Volatility (Base)',
@@ -384,7 +363,7 @@ def server(input, output, session):
         fig.add_trace(
                 go.Scatter(
                     x=stock["bucket"],
-                    y=stock['base_pred'] + stock['vol_pred'],
+                    y=stock['y_pred_combined'],
                     mode="lines",
                     line=dict(color=px.colors.qualitative.Plotly[1]),
                     name='Predicted Volatility (Volume)',
@@ -401,118 +380,113 @@ def server(input, output, session):
         )
 
         return fig
-    
-    # @render_widget  
-    # def residual():  
-    #     if get_vol_residual().empty or filtered_df().empty or input.timeid() is None:
-    #         return None
-        
-    #     stock = get_vol_residual()[get_vol_residual()["time_id"] == int(input.timeid())]
 
-    #     fig = go.Figure()
-    #     fig.add_trace(
-    #             go.Scatter(
-    #                 x=filtered_df()["bucket"],
-    #                 y=filtered_df()['volatility'],
-    #                 mode="lines",
-    #                 name='volatility',
-    #             )
-    #         )
-    #     fig.add_trace(
-    #             go.Scatter(
-    #                 x=stock["bucket"],
-    #                 y=stock['base_pred'],
-    #                 mode="lines",
-    #                 name='Base Model',
-    #             )
-    #         )
-    #     fig.add_trace(
-    #             go.Scatter(
-    #                 x=stock["bucket"],
-    #                 y=stock['base_pred'] - stock['vol_pred'],
-    #                 mode="lines",
-    #                 name='Volume Model',
-    #             )
-    #         )
-        
-    #     fig.update_layout(
-    #         legend=dict(
-    #             x=1.02,        # Slightly outside the main plot (right side)
-    #             y=0.5,         # Middle vertically
-    #             xanchor='left',
-    #             yanchor='middle'
-    #         )
+
+    # @render.ui
+    # def count():
+    #     # Depend on data.  This is the key change.
+    #     if data.get().empty:
+    #         return ui.value_box(
+    #                 "Number of timeIDs",
+    #                 "0",
+    #                 showcase=icon_svg("calendar"),
+    #             ),
+    #     df = data.get()
+    #     return ui.value_box(
+    #                 "Number of timeIDs",
+    #                 str(df["time_id"].unique().shape[0]),
+    #                 showcase=icon_svg("calendar"),
+    #             ),
+
+    # @render.ui
+    # @reactive.event(base_runtime, vol_runtime)
+    # def traintime():
+    #     if data.get().empty:
+    #         return ui.value_box(
+    #             "Model training time",
+    #             "0.00 seconds",
+    #             showcase=icon_svg("paper-plane"),
+    #             theme="text-black",
+    #         )   
+    #     return ui.value_box(
+    #         "Model training time",
+    #         f"{np.round(base_runtime.get() + vol_runtime.get(), 4)} seconds",
+    #         showcase=icon_svg("paper-plane"),
+    #         theme="text-green" if base_runtime.get() + vol_runtime.get() < 1 else "text-red",
     #     )
 
-    #     return fig
-
-
-    @render.ui
-    def count():
-        # Depend on data.  This is the key change.
-        if data.get().empty:
-            return ui.value_box(
-                    "Number of timeIDs",
-                    "0",
-                    showcase=icon_svg("calendar"),
-                ),
-        df = data.get()
-        return ui.value_box(
-                    "Number of timeIDs",
-                    str(df["time_id"].unique().shape[0]),
-                    showcase=icon_svg("calendar"),
-                ),
-
-    @render.ui
-    @reactive.event(base_runtime, vol_runtime)
-    def traintime():
-        if data.get().empty:
-            return ui.value_box(
-                "Model training time",
-                "0.00 seconds",
-                showcase=icon_svg("paper-plane"),
-                theme="text-black",
-            )   
-        return ui.value_box(
-            "Model training time",
-            f"{np.round(base_runtime.get() + vol_runtime.get(), 4)} seconds",
-            showcase=icon_svg("paper-plane"),
-            theme="text-green" if base_runtime.get() + vol_runtime.get() < 1 else "text-red",
-        )
-
-    # @render.text
-    # def count3():
-    #     increase = np.round((1 - np.sqrt(np.mean(np.square(get_residual()['vol_residual']))) / np.sqrt(np.mean(np.square(get_residual()['residual'])))) * 100, 2)
-    #     return f"{'+' if increase > 0 else ''}{increase}%"
+    # # @render.text
+    # # def count3():
+    # #     increase = np.round((1 - np.sqrt(np.mean(np.square(get_residual()['vol_residual']))) / np.sqrt(np.mean(np.square(get_residual()['residual'])))) * 100, 2)
+    # #     return f"{'+' if increase > 0 else ''}{increase}%"
     
-    @render.ui
-    @reactive.event(get_residual, get_vol_residual)
-    def improvement():
-        if data.get().empty:
-            return ui.value_box(
-                "Volume model account for",
-                "0.00%",
-                "of previously unexplained variance",
-                showcase=icon_svg("bullseye"),
-                theme="text-black"
-            )
+    # @render.ui
+    # def improvement():
+    #     if data.get().empty:
+    #         return ui.value_box(
+    #             # "Volume model account for", 
+    #             # "0.00%",
+    #             # "of previously unexplained variance",
+    #             "RMSE Drop (Base → Final)",
+    #             "0.00",
+
+    #             showcase=icon_svg("bullseye"),
+    #             theme="text-black"
+    #         )
         
-        vol_rmse = np.sqrt(np.mean(np.square(get_vol_residual()['vol_residual'])))
-        base_rmse = np.sqrt(np.mean(np.square(get_residual()['residual'])))
 
-        decrease =  np.mean((get_residual()['residual'] - get_vol_residual()['vol_residual']) / get_residual()['residual']) * 100
-        # decrease = np.round((1 - vol_rmse / base_rmse) * 100, 2)
+        
+    #     vol_rmse = np.sqrt(mean_squared_error(get_vol_residual()['']))
+    #     base_rmse = np.sqrt(np.mean(np.square(get_residual()['residual'])))
+
+    #     decrease = np.round((1 - vol_rmse / base_rmse) * 100, 2)
 
 
-        return ui.value_box(
-            "Volume model account for",
-            f"{decrease:.2f}%",
-            "of previously unexplained variance",
-            showcase=icon_svg("bullseye"),
-            theme="text-green" if decrease > 0 else "text-red",
-        )
-        # increase = np.round((1 - np.sqrt(np.mean(np.square(get_residual()['vol_residual']))) / np.sqrt(np.mean(np.square(get_residual()['residual'])))) * 100, 2)
-        # return f"{'+' if increase > 0 else ''}{increase}%"
+    #     return ui.value_box(
+    #         # "Volume model account for",
+    #         "RMSE Drop (Base → Final)",
+    #         f"{decrease}",
+    #         # "of previously unexplained variance",
+    #         showcase=icon_svg("bullseye"),
+    #         theme="text-green" if decrease > 0 else "text-red",
+    #     )
+    #     # increase = np.round((1 - np.sqrt(np.mean(np.square(get_residual()['vol_residual']))) / np.sqrt(np.mean(np.square(get_residual()['residual'])))) * 100, 2)
+    #     # return f"{'+' if increase > 0 else ''}{increase}%"
+
+    # @render.ui
+    # @reactive.event(get_residual, get_vol_residual)
+    # def directionalAccuracy():
+    #     if data.get().empty:
+    #         return ui.value_box(
+    #             "Directional Accuracy (Full model)",
+    #             "0.00",
+    #             showcase=icon_svg("bullseye"),
+    #             theme="text-black"
+    #         )
+
+    #     # Assume these are numpy arrays or pandas Series
+    #     pred = get_residual()['base_pred'] + get_vol_residual()['vol_residual']
+    #     real = get_residual()['future']
+
+    #     # Compute direction of change
+    #     pred_diff = np.diff(pred)
+    #     real_diff = np.diff(real)
+
+    #     # Directional accuracy: proportion of times model correctly predicts direction
+    #     correct_direction = (pred_diff * real_diff) > 0
+    #     directional_accuracy = np.mean(correct_direction)
+
+
+
+    #     return ui.value_box(
+    #         "Directional Accuracy (Full model)",
+    #         f"{directional_accuracy:.2f}",
+    #         showcase=icon_svg("bullseye"),
+    #         theme="text-green" if directional_accuracy > 0.5 else "text-red",
+    #     )
+    #     # increase = np.round((1 - np.sqrt(np.mean(np.square(get_residual()['vol_residual']))) / np.sqrt(np.mean(np.square(get_residual()['residual'])))) * 100, 2)
+    #     # return f"{'+' if increase > 0 else ''}{increase}%"
+
     
     @render.ui
     def data_intro():
@@ -521,15 +495,15 @@ def server(input, output, session):
             """
             # 📈 Volatility Prediction Shiny App  
 
-            ### Adjusted Residual Model with Volume Features
+            ### Volume-Adjusted Residual Model with Volume Features
 
             Welcome to our Shiny app for predicting stock volatility using an **Volume-Adjusted Residual Model** that leverages key **volume-driven features**. This tool is designed to assist traders, analysts, and researchers in forecasting short-term price fluctuations by combining traditional volatility modeling with volume-based signals.
 
             ---
 
-            ## 🔍 What Is the Adjusted Residual Model?
+            ## 🔍 What Is the Volume-Adjusted Residual Model?
 
-            The **Adjusted Residual Model** enhances baseline volatility predictions by adjusting their residuals using XGBoost algorithms. These adjustments are informed by features derived from trading volume, allowing for more responsive and accurate volatility forecasts, particularly during periods of unusual market activity.
+            The **Volume-Adjusted Residual Model** enhances baseline volatility predictions by adjusting their residuals using XGBoost algorithms. These adjustments are informed by features derived from trading volume, allowing for more responsive and accurate volatility forecasts, particularly during periods of unusual market activity.
 
             ---
 
@@ -555,11 +529,11 @@ def server(input, output, session):
 
             ## ⚙️ App Functionality
 
-            - Visualisation: Interactive plots for volatility predictions. (more)
+            - Visualisation: Interactive plots displaying realised volatility and model's predicted volatility.
 
-            - Model Diagnostics: Residual analysis and performance metrics. (talk about feature importance)
+            - Feature importance: Show how useful features are at predicting target volatility
 
-            - Talk about metrics at the top, run time for trader to evaluate smoething
+            - Metrics: (Talk about metrics at the top, run time for trader to evaluate smoething)
 
             - Customization: Choose different dataset, time id and features to predict and visualise
 
