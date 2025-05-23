@@ -32,8 +32,8 @@ features = [
     'VWAP',
     'Volume_MA',
 ]
-BASE_MODEL_FEATURES = ['ma5', 'mid_price', 'spread_lvl_1', 'spread_lvl_2']
-VOL_MODEL_FEATURES = ['bs_ratio', 'bs_chg', 'bd', 'ad',  'OBV', 'VWAP', 'Volume_MA']
+BASE_MODEL_FEATURES = ['volatility','ma5', 'mid_price', 'spread_lvl_1', 'spread_lvl_2']
+VOL_MODEL_FEATURES = ['volatility','bs_ratio', 'bs_chg', 'bd', 'ad',  'OBV', 'VWAP', 'Volume_MA']
 
 app_ui = ui.page_navbar(
     ui.nav_spacer(),
