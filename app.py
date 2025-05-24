@@ -108,11 +108,6 @@ app_ui = ui.page_navbar(
                     output_widget("feature_plots"),
                     full_screen=True,
                 ),
-                # ui.card(
-                #     ui.card_header("Data explorer"),
-                #     ui.output_data_frame("summary_features"),
-                #     full_screen=True,
-                # ),
                 col_widths=(8, 4),
             ),
             fillable=True,
@@ -137,7 +132,7 @@ def server(input, output, session):
             try:
                 print(file_info["datapath"])
                 df = pd.read_csv(file_info["datapath"], delimiter='\t')
-                df['bucket'] = np.floor(df['seconds_in_bucket'] / 20)
+                df['bucket'] = np.floor(df['seconds_in_bucket'] / 30)
                 df = df.groupby(['stock_id', 'time_id', 'bucket']).mean()[['bid_price1','ask_price1','bid_price2','ask_price2','bid_size1','ask_size1','bid_size2', 'ask_size2']].round(4).reset_index()
                 
                 # # Create full range of time_ids
@@ -219,7 +214,15 @@ def server(input, output, session):
         stock = get_volume_feature(stock)
         stock = stock.groupby('time_id', group_keys=False).apply(process_group)
         # stock_with_na = stock.copy()
+
+        print('STOCK DATA:')
+        print('PREVIEW',stock.head())
+
         stock = stock.dropna()
+
+        print('STOCK DATA:')
+        print('PREVIEW2',stock.head())
+
         return stock
     
     @reactive.calc
@@ -230,25 +233,14 @@ def server(input, output, session):
         X = stock[BASE_MODEL_FEATURES]
         y = stock['future']
         stock = stock.sort_values(["time_id", "bucket"])
-        split_index = int(len(stock) * 0.8)
+        split_index = int(len(stock) * 1)
         X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
         y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]  
         # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
         y_train_scaled = y_train * 10000
         start = time.time()
-        # model = XGBRegressor() 
-        model = XGBRegressor(
-                                    n_estimators=200,
-                                    max_depth=4,
-                                    learning_rate=0.05,
-                                    subsample=0.8,
-                                    colsample_bytree=0.8,
-                                    reg_alpha=0.1,
-                                    reg_lambda=1.0,
-                                    random_state=42,
-                                    verbosity=0,
-                                    objective='reg:squarederror'
-                                )
+        model = XGBRegressor() 
+        # model = LinearRegression()
         model.fit(X_train, y_train_scaled)
         end = time.time()
         base_runtime.set(end - start)
@@ -277,24 +269,13 @@ def server(input, output, session):
         X = stock[VOL_MODEL_FEATURES]
         y = stock['residual']
         stock = stock.sort_values(["time_id", "bucket"])
-        split_index = int(len(stock) * 0.8)
+        split_index = int(len(stock) * 1)
         X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
         y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]  
         # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
         y_train_scaled = y_train * 10000
         start = time.time()
-        model = XGBRegressor(
-                                    n_estimators=200,
-                                    max_depth=4,
-                                    learning_rate=0.05,
-                                    subsample=0.8,
-                                    colsample_bytree=0.8,
-                                    reg_alpha=0.1,
-                                    reg_lambda=1.0,
-                                    random_state=42,
-                                    verbosity=0,
-                                    objective='reg:squarederror'
-                                )
+        model = XGBRegressor()
         model.fit(X_train, y_train_scaled)
         end = time.time()
         vol_runtime.set(end - start)
@@ -315,12 +296,6 @@ def server(input, output, session):
 
         return stock
     
-    @render.data_frame
-    def summary_features():
-        if stock_features().empty:
-            return pd.DataFrame()
-        return stock_features()[['time_id', 'bucket', 'WAP', 'log_return', 'volatility', 'ma5', 'ma10', 'bs_ratio', 'bs_chg', 'bd', 'ad', 'OBV', 'VWAP', 'Volume_MA']].round(4)
-
     @render_widget
     def feature_plots():
         if base_model() is None or vol_model() is None:
@@ -411,6 +386,7 @@ def server(input, output, session):
         
         stock = get_vol_residual()[get_vol_residual()["time_id"] == int(input.timeid())]
         split_index = int(len(stock) * 0)
+        
 
         fig = go.Figure()
         fig.add_trace(
@@ -550,9 +526,9 @@ def server(input, output, session):
         vol_rmse = np.sqrt(np.mean(np.square(get_vol_residual()['vol_residual'])))
         base_rmse = np.sqrt(np.mean(np.square(get_residual()['residual'])))
 
+        print(f"VOL RMSE: {vol_rmse}, BASE RMSE: {base_rmse}")
 
-
-        decrease =  np.mean((get_vol_residual()['residual'] - get_vol_residual()['vol_residual']) / get_vol_residual()['residual']) * 100
+        decrease =  (base_rmse - vol_rmse) / base_rmse * 100
 
         # decrease = np.round((1 - vol_rmse / base_rmse) * 100, 2)
 
