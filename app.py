@@ -32,8 +32,17 @@ features = [
     'VWAP',
     'Volume_MA',
 ]
-BASE_MODEL_FEATURES = ['volatility','ma5', 'mid_price', 'spread_lvl_1', 'spread_lvl_2']
-VOL_MODEL_FEATURES = ['volatility','bs_ratio', 'bs_chg', 'bd', 'ad',  'OBV', 'VWAP', 'Volume_MA']
+# BASE_MODEL_FEATURES = ['past','ma5', 'mid_price', 'spread_lvl_1', 'spread_lvl_2']
+# VOL_MODEL_FEATURES = ['past','bs_ratio', 'bs_chg', 'bd', 'ad',  'OBV', 'VWAP', 'Volume_MA']
+
+BASE_MODEL_FEATURES = ['ma3', 'ma5', 'ma10', 'mid_price']
+VOL_MODEL_FEATURES = [
+                    'volume_momentum_5', 'volume_trend',
+                    'volume_price_corr', 'vwap_deviation', 'order_flow_imbalance',
+                    'cumulative_order_flow', 'volume_volatility', 'volume_regime',
+                    'bs_volatility', 'bs_momentum', 'volume_percentile',
+                    'volume_ma_interaction', 'bs_volume_interaction'
+                    ]
 
 app_ui = ui.page_navbar(
     ui.nav_spacer(),
@@ -175,10 +184,19 @@ def server(input, output, session):
                 print(f"Error reading CSV: {e}") # Important: Handle errors!
 
     @reactive.calc  
-    def filtered_df():
+    def stock_df():
         df = data.get()
         if input.timeid() and input.stockid():
-            stock = df[(df["time_id"] == int(input.timeid())) & (df["stock_id"] == int(input.stockid()))]
+            stock = df[df["stock_id"] == int(input.stockid())]
+            return stock
+        else:
+            return df
+
+    @reactive.calc  
+    def filtered_df():
+        df = stock_df()
+        if input.timeid() and input.stockid():
+            stock = df[df["time_id"] == int(input.timeid())]
             return stock
         else:
             return df
@@ -195,7 +213,7 @@ def server(input, output, session):
     def model_data():
         if data.get().empty:
             return pd.DataFrame()
-        stock = data.get()
+        stock = stock_df()
         stock = get_stock_characteristics(stock)
         stock = get_stock_feature(stock)
         stock = get_volume_feature(stock)
@@ -218,7 +236,19 @@ def server(input, output, session):
         # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
         y_train_scaled = y_train * 10000
         start = time.time()
-        model = XGBRegressor() 
+        # model = XGBRegressor() 
+        model = XGBRegressor(
+                                    n_estimators=200,
+                                    max_depth=4,
+                                    learning_rate=0.05,
+                                    subsample=0.8,
+                                    colsample_bytree=0.8,
+                                    reg_alpha=0.1,
+                                    reg_lambda=1.0,
+                                    random_state=42,
+                                    verbosity=0,
+                                    objective='reg:squarederror'
+                                )
         model.fit(X_train, y_train_scaled)
         end = time.time()
         base_runtime.set(end - start)
@@ -232,6 +262,10 @@ def server(input, output, session):
         stock = model_data()
         stock['base_pred'] = base_model().predict(stock[BASE_MODEL_FEATURES]) / 10000
         stock['residual'] = stock['future'] - stock['base_pred']
+
+        pred = np.clip(stock['base_pred'], 1e-8, None)
+        true = np.clip(stock['future'], 1e-8, None)
+        print(f'QLIKE BASE {np.mean(np.log(pred) + true / pred)}')
 
         return stock
     
@@ -249,7 +283,18 @@ def server(input, output, session):
         # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
         y_train_scaled = y_train * 10000
         start = time.time()
-        model = XGBRegressor() 
+        model = XGBRegressor(
+                                    n_estimators=200,
+                                    max_depth=4,
+                                    learning_rate=0.05,
+                                    subsample=0.8,
+                                    colsample_bytree=0.8,
+                                    reg_alpha=0.1,
+                                    reg_lambda=1.0,
+                                    random_state=42,
+                                    verbosity=0,
+                                    objective='reg:squarederror'
+                                )
         model.fit(X_train, y_train_scaled)
         end = time.time()
         vol_runtime.set(end - start)
@@ -263,13 +308,18 @@ def server(input, output, session):
         stock = get_residual()
         stock['vol_pred'] = vol_model().predict(stock[VOL_MODEL_FEATURES]) / 10000
         stock['vol_residual'] = stock['future'] - (stock['base_pred'] + stock['vol_pred'])
+
+        pred = np.clip(stock['vol_residual'], 1e-8, None)
+        true = np.clip(stock['future'], 1e-8, None)
+        print(f'QLIKE VOL {np.mean(np.log(pred) + true / pred)}')
+
         return stock
     
     @render.data_frame
     def summary_features():
         if stock_features().empty:
             return pd.DataFrame()
-        return stock_features()[['time_id', 'bucket', 'WAP', 'log_return', 'volatility', 'ma5', 'ma10', 'future', 'bs_ratio', 'bs_chg', 'bd', 'ad', 'OBV', 'VWAP', 'Volume_MA']].round(4)
+        return stock_features()[['time_id', 'bucket', 'WAP', 'log_return', 'volatility', 'ma5', 'ma10', 'bs_ratio', 'bs_chg', 'bd', 'ad', 'OBV', 'VWAP', 'Volume_MA']].round(4)
 
     @render_widget
     def feature_plots():
@@ -360,7 +410,7 @@ def server(input, output, session):
             return None
         
         stock = get_vol_residual()[get_vol_residual()["time_id"] == int(input.timeid())]
-        split_index = int(len(stock) * 0.8)
+        split_index = int(len(stock) * 0)
 
         fig = go.Figure()
         fig.add_trace(
@@ -499,6 +549,8 @@ def server(input, output, session):
         
         vol_rmse = np.sqrt(np.mean(np.square(get_vol_residual()['vol_residual'])))
         base_rmse = np.sqrt(np.mean(np.square(get_residual()['residual'])))
+
+
 
         decrease =  np.mean((get_vol_residual()['residual'] - get_vol_residual()['vol_residual']) / get_vol_residual()['residual']) * 100
 
