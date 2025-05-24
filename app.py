@@ -35,8 +35,8 @@ features = [
 # BASE_MODEL_FEATURES = ['past','ma5', 'mid_price', 'spread_lvl_1', 'spread_lvl_2']
 # VOL_MODEL_FEATURES = ['past','bs_ratio', 'bs_chg', 'bd', 'ad',  'OBV', 'VWAP', 'Volume_MA']
 
-BASE_MODEL_FEATURES = ['ma3', 'ma5', 'ma10', 'mid_price']
-VOL_MODEL_FEATURES = [
+BASE_MODEL_FEATURES = ['ma3', 'mid_price']
+VOL_MODEL_FEATURES = ['base_pred',
                     'volume_momentum_5', 'volume_trend',
                     'volume_price_corr', 'vwap_deviation', 'order_flow_imbalance',
                     'cumulative_order_flow', 'volume_volatility', 'volume_regime',
