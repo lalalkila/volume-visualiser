@@ -113,7 +113,7 @@ def server(input, output, session):
             try:
                 print(file_info["datapath"])
                 df = pd.read_csv(file_info["datapath"], delimiter='\t')
-                df['bucket'] = np.floor(df['seconds_in_bucket'] / 30)
+                df['bucket'] = np.floor(df['seconds_in_bucket'] / 20)
                 df = df.groupby(['stock_id', 'time_id', 'bucket']).mean()[['bid_price1','ask_price1','bid_price2','ask_price2','bid_size1','ask_size1','bid_size2', 'ask_size2']].round(4).reset_index()
                 
                 # # Create full range of time_ids
@@ -221,7 +221,18 @@ def server(input, output, session):
         # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
         y_train_scaled = y_train * 10000
         start = time.time()
-        model = XGBRegressor() 
+        model = XGBRegressor(
+                                    n_estimators=200,
+                                    max_depth=4,
+                                    learning_rate=0.05,
+                                    subsample=0.8,
+                                    colsample_bytree=0.8,
+                                    reg_alpha=0.1,
+                                    reg_lambda=1.0,
+                                    random_state=42,
+                                    verbosity=0,
+                                    objective='reg:squarederror'
+                                )
         # model = LinearRegression()
         model.fit(X_train, y_train_scaled)
         end = time.time()
@@ -251,13 +262,24 @@ def server(input, output, session):
         X = stock[VOL_MODEL_FEATURES]
         y = stock['residual']
         stock = stock.sort_values(["time_id", "bucket"])
-        split_index = int(len(stock) * 1)
+        split_index = int(len(stock) * 0.8)
         X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
         y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]  
         # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
         y_train_scaled = y_train * 10000
         start = time.time()
-        model = XGBRegressor()
+        model = XGBRegressor(
+                                    n_estimators=200,
+                                    max_depth=4,
+                                    learning_rate=0.05,
+                                    subsample=0.8,
+                                    colsample_bytree=0.8,
+                                    reg_alpha=0.1,
+                                    reg_lambda=1.0,
+                                    random_state=42,
+                                    verbosity=0,
+                                    objective='reg:squarederror'
+                                )
         model.fit(X_train, y_train_scaled)
         end = time.time()
         vol_runtime.set(end - start)
@@ -483,9 +505,8 @@ def server(input, output, session):
     def improvement():
         if data.get().empty:
             return ui.value_box(
-                "Volume model account for",
+                "RMSE Drop (Base → Final)",
                 "0.00%",
-                "of previously unexplained variance",
                 showcase=icon_svg("bullseye"),
                 theme="text-black"
             )
@@ -501,9 +522,8 @@ def server(input, output, session):
 
 
         return ui.value_box(
-            "Volume model account for",
+            "RMSE Drop (Base → Final)",
             f"{decrease:.2f}%",
-            "of previously unexplained variance",
             showcase=icon_svg("bullseye"),
             theme="text-green" if decrease > 0 else "text-red",
         )
