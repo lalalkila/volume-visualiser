@@ -71,30 +71,11 @@ app_ui = ui.page_navbar(
                     [],  # Start with empty choices, to be updated later
                     selected=None,
                 ),
-                # ui.input_selectize(  
-                #     "display_features",  
-                #     "Select features below (Max 4):",  
-                #     {feature : feature for feature in features},
-                #     selected=['ad', 'bd', 'OBV', 'Volume_MA'],  
-                #     multiple=True,  
-                #     options={'maxItems': 4},
-                # ),  
             ),
             ui.layout_column_wrap(
-                ui.output_ui("count"),
-
-                # ui.value_box( # Added a second value box, but it seems to do the same thing.
-                #     "Model training time",
-                #     ui.output_text("count1"),
-                #     showcase=icon_svg("robot"),
-                # ),
                 ui.output_ui("traintime"),
+                ui.output_ui("directionalAccuracy"),
                 ui.output_ui("improvement"),
-                # ui.value_box( # Added a third value box, but it seems to do the same thing.
-                #     "Volume adjusted increase in RMSE",
-                #     ui.output_text("count3"),
-                #     showcase=icon_svg("cube"),
-                # ),
                 fill=False,
             ),
             ui.layout_columns(
@@ -234,7 +215,7 @@ def server(input, output, session):
         X = stock[BASE_MODEL_FEATURES]
         y = stock['future']
         stock = stock.sort_values(["time_id", "bucket"])
-        split_index = int(len(stock) * 1)
+        split_index = int(len(stock) * 0.8)
         X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
         y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]  
         # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
@@ -429,50 +410,6 @@ def server(input, output, session):
 
         return fig
     
-    # @render_widget  
-    # def residual():  
-    #     if get_vol_residual().empty or filtered_df().empty or input.timeid() is None:
-    #         return None
-        
-    #     stock = get_vol_residual()[get_vol_residual()["time_id"] == int(input.timeid())]
-
-    #     fig = go.Figure()
-    #     fig.add_trace(
-    #             go.Scatter(
-    #                 x=filtered_df()["bucket"],
-    #                 y=filtered_df()['volatility'],
-    #                 mode="lines",
-    #                 name='volatility',
-    #             )
-    #         )
-    #     fig.add_trace(
-    #             go.Scatter(
-    #                 x=stock["bucket"],
-    #                 y=stock['base_pred'],
-    #                 mode="lines",
-    #                 name='Base Model',
-    #             )
-    #         )
-    #     fig.add_trace(
-    #             go.Scatter(
-    #                 x=stock["bucket"],
-    #                 y=stock['base_pred'] - stock['vol_pred'],
-    #                 mode="lines",
-    #                 name='Volume Model',
-    #             )
-    #         )
-        
-    #     fig.update_layout(
-    #         legend=dict(
-    #             x=1.02,        # Slightly outside the main plot (right side)
-    #             y=0.5,         # Middle vertically
-    #             xanchor='left',
-    #             yanchor='middle'
-    #         )
-    #     )
-
-    #     return fig
-
 
     @render.ui
     def count():
@@ -507,10 +444,39 @@ def server(input, output, session):
             theme="text-green" if base_runtime.get() + vol_runtime.get() < 1 else "text-red",
         )
 
-    # @render.text
-    # def count3():
-    #     increase = np.round((1 - np.sqrt(np.mean(np.square(get_residual()['vol_residual']))) / np.sqrt(np.mean(np.square(get_residual()['residual'])))) * 100, 2)
-    #     return f"{'+' if increase > 0 else ''}{increase}%"
+    @render.ui
+    def directionalAccuracy():
+        if data.get().empty:
+            return ui.value_box(
+                "Directional Accuracy (Full model)",
+                "0.00",
+                showcase=icon_svg("bullseye"),
+                theme="text-black"
+            )
+        
+
+        
+        stock_id = int(input.stockid())
+        df = get_vol_residual()
+        y_pred_combined =df['base_pred'] + df['vol_pred']
+        y_true = df['future']    
+
+        # Compute direction of change
+        pred_diff = np.diff(y_pred_combined)
+        real_diff = np.diff(y_true)
+
+        # Directional accuracy: proportion of times model correctly predicts direction
+        correct_direction = (pred_diff * real_diff) > 0
+        directional_accuracy = np.mean(correct_direction)
+
+
+
+        return ui.value_box(
+            "Directional Accuracy (Full model)",
+            f"{directional_accuracy:.2f}",
+            showcase=icon_svg("bullseye"),
+            theme="text-green" if directional_accuracy > 0.5 else "text-red",
+        )
     
     @render.ui
     @reactive.event(get_residual, get_vol_residual)
