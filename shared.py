@@ -76,7 +76,7 @@ def get_volume_feature(stock : pd.DataFrame) -> pd.DataFrame:
     stock['cumulative_order_flow'] = stock['order_flow_imbalance'].rolling(5).sum()
     
     # Volume volatility and regime changes
-    stock['volume_volatility'] = stock['Volume_MA'].rolling(10).std()
+    stock['volume_volatility'] = stock['Volume_MA'].rolling(5).std()
     stock['volume_regime'] = (stock['Volume_MA'] > stock['Volume_MA'].rolling(5).quantile(0.75)).astype(int)
     
     # Bid-ask spread dynamics
