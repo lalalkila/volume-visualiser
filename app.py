@@ -108,11 +108,6 @@ app_ui = ui.page_navbar(
                     output_widget("feature_plots"),
                     full_screen=True,
                 ),
-                # ui.card(
-                #     ui.card_header("Data explorer"),
-                #     ui.output_data_frame("summary_features"),
-                #     full_screen=True,
-                # ),
                 col_widths=(8, 4),
             ),
             fillable=True,
@@ -219,7 +214,15 @@ def server(input, output, session):
         stock = get_volume_feature(stock)
         stock = stock.groupby('time_id', group_keys=False).apply(process_group)
         # stock_with_na = stock.copy()
+
+        print('STOCK DATA:')
+        print('PREVIEW',stock.head())
+
         stock = stock.dropna()
+
+        print('STOCK DATA:')
+        print('PREVIEW2',stock.head())
+
         return stock
     
     @reactive.calc
@@ -236,7 +239,6 @@ def server(input, output, session):
         # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
         y_train_scaled = y_train * 10000
         start = time.time()
-        # model = XGBRegressor() 
         model = XGBRegressor(
                                     n_estimators=200,
                                     max_depth=4,
@@ -249,6 +251,7 @@ def server(input, output, session):
                                     verbosity=0,
                                     objective='reg:squarederror'
                                 )
+        # model = LinearRegression()
         model.fit(X_train, y_train_scaled)
         end = time.time()
         base_runtime.set(end - start)
@@ -315,12 +318,6 @@ def server(input, output, session):
 
         return stock
     
-    @render.data_frame
-    def summary_features():
-        if stock_features().empty:
-            return pd.DataFrame()
-        return stock_features()[['time_id', 'bucket', 'WAP', 'log_return', 'volatility', 'ma5', 'ma10', 'bs_ratio', 'bs_chg', 'bd', 'ad', 'OBV', 'VWAP', 'Volume_MA']].round(4)
-
     @render_widget
     def feature_plots():
         if base_model() is None or vol_model() is None:
@@ -411,6 +408,7 @@ def server(input, output, session):
         
         stock = get_vol_residual()[get_vol_residual()["time_id"] == int(input.timeid())]
         split_index = int(len(stock) * 0)
+        
 
         fig = go.Figure()
         fig.add_trace(
@@ -540,9 +538,8 @@ def server(input, output, session):
     def improvement():
         if data.get().empty:
             return ui.value_box(
-                "Volume model account for",
+                "RMSE Drop (Base → Final)",
                 "0.00%",
-                "of previously unexplained variance",
                 showcase=icon_svg("bullseye"),
                 theme="text-black"
             )
@@ -550,16 +547,15 @@ def server(input, output, session):
         vol_rmse = np.sqrt(np.mean(np.square(get_vol_residual()['vol_residual'])))
         base_rmse = np.sqrt(np.mean(np.square(get_residual()['residual'])))
 
+        print(f"VOL RMSE: {vol_rmse}, BASE RMSE: {base_rmse}")
 
-
-        decrease =  np.mean((get_vol_residual()['residual'] - get_vol_residual()['vol_residual']) / get_vol_residual()['residual']) * 100
+        decrease =  (base_rmse - vol_rmse) / base_rmse * 100
 
         # decrease = np.round((1 - vol_rmse / base_rmse) * 100, 2)
 
         return ui.value_box(
-            "Volume model account for",
+            "RMSE Drop (Base → Final)",
             f"{decrease:.2f}%",
-            "of previously unexplained variance",
             showcase=icon_svg("bullseye"),
             theme="text-green" if decrease > 0 else "text-red",
         )
