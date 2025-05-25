@@ -6,11 +6,9 @@ import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
 import plotly.subplots as sp
-from sklearn.preprocessing import StandardScaler, RobustScaler
-
 
 from xgboost import XGBRegressor
-from sklearn.linear_model import LinearRegression, RidgeCV
+from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
 
 # Import data from shared.py
@@ -39,11 +37,10 @@ features = [
 
 BASE_MODEL_FEATURES = ['ma3', 'mid_price']
 VOL_MODEL_FEATURES = ['base_pred',
-                    'volume_momentum_5', 
+                    'volume_momentum_5', 'volume_trend',
                     'volume_price_corr', 'vwap_deviation', 'order_flow_imbalance',
-                    'cumulative_order_flow', 'volume_volatility', 
-                    'bs_volatility', 'bs_momentum', 
-                    # 'volume_regime', 'volume_regime',
+                    'cumulative_order_flow', 'volume_volatility', 'volume_regime',
+                    'bs_volatility', 'bs_momentum', 'volume_percentile',
                     'volume_ma_interaction', 'bs_volume_interaction'
                     ]
 
@@ -61,7 +58,7 @@ app_ui = ui.page_navbar(
         "Interactive Model",
         ui.page_sidebar(
             ui.sidebar(
-                ui.input_file("file", "Upload a CSV file", accept=".csv"),
+                ui.input_file("file", "Model Explorer\nUpload a CSV file", accept=".csv"),
                 ui.input_select(
                     "timeid",
                     "Time ID",
@@ -83,12 +80,12 @@ app_ui = ui.page_navbar(
             ),
             ui.layout_columns(
                 ui.card(
-                    ui.card_header("Volatility forecasting"),
+                    ui.card_header("Model explorer"),
                     ui.output_ui("model_explorer_content"),
                     full_screen=True,
                 ),
                 ui.card(
-                    ui.card_header("Model's Feature Importance"),
+                    ui.card_header("Feature Importance"),
                     output_widget("feature_plots"),
                     full_screen=True,
                 ),
@@ -118,34 +115,29 @@ def server(input, output, session):
                 df = pd.read_csv(file_info["datapath"], delimiter='\t')
                 df['bucket'] = np.floor(df['seconds_in_bucket'] / 20)
                 df = df.groupby(['stock_id', 'time_id', 'bucket']).mean()[['bid_price1','ask_price1','bid_price2','ask_price2','bid_size1','ask_size1','bid_size2', 'ask_size2']].round(4).reset_index()
-                
-                # # # Create full range of time_ids
-                # # full_time_ids = pd.DataFrame({'time_id': range(stock['time_id'].min(), stock['time_id'].max() + 1)})
-                
-                # # # Merge to add missing ones
-                # # stock = full_time_ids.merge(stock, on='time_id', how='left')
-                # # stock = stock.sort_values(by=['time_id', 'bucket'])
 
-                # # Get all unique stock_ids in the dataframe
-                # unique_stock_ids = df['stock_id'].unique()
+                # Get all unique stock_ids in the dataframe
+                unique_stock_ids = df['stock_id'].unique()
 
-                # # Create a template with all combinations of stock_id and time_id
-                # min_time_id = df['time_id'].min()
-                # max_time_id = df['time_id'].max()
-                # time_range = range(min_time_id, max_time_id + 1)
+                # Create a template with all combinations of stock_id and time_id
+                min_time_id = df['time_id'].min()
+                max_time_id = df['time_id'].max()
+                time_range = range(min_time_id, max_time_id + 1)
 
-                # # Create a cross join between stock_ids and time_ids
-                # template = pd.DataFrame([(stock_id, time_id) 
-                #                     for stock_id in unique_stock_ids 
-                #                     for time_id in time_range],
-                #                     columns=['stock_id', 'time_id'])
+                # Create a cross join between stock_ids and time_ids
+                template = pd.DataFrame([(stock_id, time_id) 
+                                    for stock_id in unique_stock_ids 
+                                    for time_id in time_range],
+                                    columns=['stock_id', 'time_id'])
 
-                # # Merge the original dataframe with the template
-                # df_complete = template.merge(df, on=['stock_id', 'time_id'], how='left')
-
-                # # Sort the result
+                # Sort the result
                 # df_complete = df_complete.sort_values(by=['stock_id', 'time_id', 'bucket'])
-                
+                # split_index = int(len(df_complete) * 0.0125)
+                # df_complete = df_complete.iloc[:split_index]
+                # y = y.iloc[:split_index]
+
+                df['time_id_group'] = np.floor(df['time_id'] / 20)
+
                 data.set(df)
                 
                 ui.update_select(
@@ -170,7 +162,7 @@ def server(input, output, session):
             stock = df[df["stock_id"] == int(input.stockid())]
             return stock
         else:
-            return df
+            return pd.DataFrame(columns=df.columns)
 
     @reactive.calc  
     def filtered_df():
@@ -179,7 +171,7 @@ def server(input, output, session):
             stock = df[df["time_id"] == int(input.timeid())]
             return stock
         else:
-            return df
+            return pd.DataFrame(columns=df.columns)
     
     @reactive.calc
     def stock_features():
@@ -191,32 +183,24 @@ def server(input, output, session):
     
     @reactive.calc
     def model_data():
-        if data.get().empty:
-            return pd.DataFrame()
         stock = stock_df()
+        if stock.empty or input.timeid() is None:
+            return pd.DataFrame(columns=df.columns)
+        stock = stock[stock['time_id_group'] == np.floor(int(input.timeid()) / 20)]
         stock = get_stock_characteristics(stock)
         stock = get_stock_feature(stock)
         stock = get_volume_feature(stock)
         stock = stock.groupby('time_id', group_keys=False).apply(process_group)
-        # stock_with_na = stock.copy()
-
-        print('STOCK DATA:')
-        print('PREVIEW',stock.head())
 
         stock = stock.dropna()
-
-        print('STOCK DATA:')
-        print('PREVIEW2',stock.head())
 
         return stock
     
     @reactive.calc
     def base_model():
-        if data.get().empty:
-            return pd.DataFrame()
         stock = model_data()
-        # scaler_price = StandardScaler()
-        # scaler_volume = RobustScaler()
+        if stock.empty:
+            return None
         X = stock[BASE_MODEL_FEATURES]
         y = stock['future']
         stock = stock.sort_values(["time_id", "bucket"])
@@ -224,12 +208,7 @@ def server(input, output, session):
         # X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
         # y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]  
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
-
-        # X_train_price = scaler_price.fit_transform(X_train)
-        # X_test_price = scaler_price.transform(X_test)
         y_train_scaled = y_train * 10000
-
-
         start = time.time()
         model = XGBRegressor(
                                     n_estimators=200,
@@ -243,7 +222,6 @@ def server(input, output, session):
                                     verbosity=0,
                                     objective='reg:squarederror'
                                 )
-        # model = RidgeCV(alphas=[0.1, 1.0, 10.0])
         # model = LinearRegression()
         model.fit(X_train, y_train_scaled)
         end = time.time()
@@ -253,9 +231,9 @@ def server(input, output, session):
     
     @reactive.calc
     def get_residual():
-        if data.get().empty:
-            return pd.DataFrame()
         stock = model_data()
+        if stock.empty:
+            return pd.DataFrame(columns=df.columns)
         stock['base_pred'] = base_model().predict(stock[BASE_MODEL_FEATURES]) / 10000
         stock['residual'] = stock['future'] - stock['base_pred']
 
@@ -267,22 +245,14 @@ def server(input, output, session):
     
     @reactive.calc
     def vol_model():
-        if data.get().empty:
-            return pd.DataFrame()
         stock = get_residual()
+        if stock.empty:
+            return None
         X = stock[VOL_MODEL_FEATURES]
         y = stock['residual']
-
-        # scaler_volume = RobustScaler()
         stock = stock.sort_values(["time_id", "bucket"])
-        # split_index = int(len(stock) * 0.8)
-        # X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
-        # y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]  
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
-        # X_train_volume= scaler_volume.fit_transform(X_train)
-        # X_test_volume = scaler_volume.transform(X_test)
         y_train_scaled = y_train * 10000
-
         start = time.time()
         model = XGBRegressor(
                                     n_estimators=200,
@@ -296,8 +266,6 @@ def server(input, output, session):
                                     verbosity=0,
                                     objective='reg:squarederror'
                                 )
-        # model = RidgeCV(alphas=[0.1, 1.0, 10.0])
-        # model = LinearRegression()
         model.fit(X_train, y_train_scaled)
         end = time.time()
         vol_runtime.set(end - start)
@@ -306,9 +274,9 @@ def server(input, output, session):
     
     @reactive.calc
     def get_vol_residual():
-        if data.get().empty:
-            return pd.DataFrame()
         stock = get_residual()
+        if stock.empty or vol_model() is None:
+            return pd.DataFrame(columns=df.columns)
         stock['vol_pred'] = vol_model().predict(stock[VOL_MODEL_FEATURES]) / 10000
         stock['vol_residual'] = stock['future'] - (stock['base_pred'] + stock['vol_pred'])
 
@@ -412,10 +380,27 @@ def server(input, output, session):
             - `bid_price2`
             - `ask_price2`
 
-            > IMPORTANT: Make sure the CSV uses tab (`\\t`) as a delimiter.
+            > Make sure the CSV uses tab (`\\t`) as a delimiter.
                                
-            ### Example:         
-            
+            ### Example:
+            ~~~
+            stock_id time_id seconds_in_bucket bid_price1 ask_price1 bid_price2 ask_price2
+            8382 12 1.0 722.17 722.63 722.15 722.64
+            8382 12 2.0 722.18 722.88 722.17 722.98
+            ... ... ... ... ... ... ...             
+            ~~~
+            ~~~
+            stock_id\ttime_id\tseconds_in_bucket\tbid_price1\task_price1\tbid_price2\task_price2
+            8382\t12\t1.0\t722.17\t722.63\t722.15\t722.64
+            8382\t12\t2.0\t722.18\t722.88\t722.17\t722.98
+            ...\t...\t...\t...\t...\t...\t...
+            ~~~
+            ```
+            stock_id\ttime_id\tseconds_in_bucket\tbid_price1\task_price1\tbid_price2\task_price2
+            8382\t12\t1.0\t722.17\t722.63\t722.15\t722.64
+            8382\t12\t2.0\t722.18\t722.88\t722.17\t722.98
+            ...\t...\t...\t...\t...\t...\t...
+            ```
             | stock_id | time_id | seconds_in_bucket | bid_price1 | ask_price1 | bid_price2 | ask_price2 |
             |----------|---------|-------------------|------------|------------|------------|------------|
             | 8382     | 12      | 1.0               | 722.17     | 722.63     | 722.15     | 722.64     |
@@ -519,7 +504,7 @@ def server(input, output, session):
 
     @render.ui
     def directionalAccuracy():
-        if data.get().empty:
+        if get_vol_residual().empty:
             return ui.value_box(
                 ui.HTML(f"Directional Accuracy Gain<br>(Base → Final)"),
                 "0.00%",
@@ -564,7 +549,7 @@ def server(input, output, session):
     @render.ui
     @reactive.event(get_residual, get_vol_residual)
     def improvement():
-        if data.get().empty:
+        if get_vol_residual().empty:
             return ui.value_box(
                 ui.HTML(f"RMSE Decrease<br>(Base → Final)"),
                 "0.00%",
@@ -601,35 +586,53 @@ def server(input, output, session):
             """
             # 📈 Volatility Prediction Shiny App  
 
-            ### Volume-Adjusted Residual Model with Volume Features
+            ### Adjusted Residual Model with Volume Features
 
-            Welcome to our Shiny app for predicting stock volatility using an **Volume-Adjusted Residual Model** that leverages key **volume-driven features**. This tool is designed to assist researchers in forecasting short-term price fluctuations by combining traditional volatility modeling with volume-based signals.
-
-            ---
-
-            ## 🔍 What is the Volume-Adjusted Residual Model?
-
-            The **Volume-Adjusted Residual Model** enhances baseline volatility predictions by adjusting their residuals using XGBoost algorithms. These adjustments are informed by features derived from trading volume, allowing for more responsive and accurate volatility forecasts, particularly during periods of unusual market activity.
+            Welcome to our Shiny app for predicting stock volatility using an **Volume-Adjusted Residual Model** that leverages key **volume-driven features**. This tool is designed to assist traders, analysts, and researchers in forecasting short-term price fluctuations by combining traditional volatility modeling with volume-based signals.
 
             ---
 
-            ## 🧠 Engineered Features used in the model
-            - **ma3**: 3-period moving average of weighted average price.
-            - **...**
+            ## 🔍 What Is the Adjusted Residual Model?
+
+            The **Adjusted Residual Model** enhances baseline volatility predictions by adjusting their residuals using XGBoost algorithms. These adjustments are informed by features derived from trading volume, allowing for more responsive and accurate volatility forecasts, particularly during periods of unusual market activity.
 
             ---
+
+            ## 🧠 Features Used in the Model
+
+            Our model uses the following engineered features, which capture various dimensions of market activity and price-volume interaction:
+
+            - ma5: 5-period moving average of weighted average price.
+
+            - bs_ratio: Bid-ask size ratio, indicating supply-demand imbalance.
+
+            - bs_chg: Change in bid-ask spread, capturing short-term liquidity shifts.
+
+            - bd: Buy-side depth—aggregate buy-side volume near the best bid.
+
+            - ad: Ask-side depth—aggregate sell-side volume near the best ask.
+
+            - OBV (On-Balance Volume): A cumulative volume-based momentum indicator.
+
+            - VWAP (Volume-Weighted Average Price): The average price weighted by volume.
+
+            - Volume_MA: Moving average of trade volume, capturing trends in trading intensity.
 
             ## ⚙️ App Functionality
-            - **Visualisation**: Interactive plots for volatility predictions. 
-            - **Model Diagnostics**: Residual analysis and performance metrics. 
-            - **Performance Evaluation**: Training time, Directional Accuracy Increase and RMSEDecrease to evaluate the impact of volume model.
-            - **Customization**: Option to choose different dataset, time id and features to predict and visualise.
+
+            - Visualisation: Interactive plots for volatility predictions. (more)
+
+            - Model Diagnostics: Residual analysis and performance metrics. (talk about feature importance)
+
+            - Talk about metrics at the top, run time for trader to evaluate smoething
+
+            - Customization: Choose different dataset, time id and features to predict and visualise
 
 
             """,
         )
 
-        return ui.div(md, class_="my-0")
+        return ui.div(md, class_="my-3")
     
 
 app = App(app_ui, server)
