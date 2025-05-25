@@ -61,7 +61,7 @@ app_ui = ui.page_navbar(
         "Interactive Model",
         ui.page_sidebar(
             ui.sidebar(
-                ui.input_file("file", "Model Explorer\nUpload a CSV file", accept=".csv"),
+                ui.input_file("file", "Upload a CSV file", accept=".csv"),
                 ui.input_select(
                     "timeid",
                     "Time ID",
@@ -83,12 +83,12 @@ app_ui = ui.page_navbar(
             ),
             ui.layout_columns(
                 ui.card(
-                    ui.card_header("Model explorer"),
+                    ui.card_header("Volatility forecasting"),
                     ui.output_ui("model_explorer_content"),
                     full_screen=True,
                 ),
                 ui.card(
-                    ui.card_header("Feature Importance"),
+                    ui.card_header("Model's Feature Importance"),
                     output_widget("feature_plots"),
                     full_screen=True,
                 ),
@@ -607,37 +607,29 @@ def server(input, output, session):
 
             ---
 
-            ## 🔍 What Is the Volume-Adjusted Residual Model?
+            ## 🔍 What is the Volume-Adjusted Residual Model?
 
             The **Volume-Adjusted Residual Model** enhances baseline volatility predictions by adjusting their residuals using XGBoost algorithms. These adjustments are informed by features derived from trading volume, allowing for more responsive and accurate volatility forecasts, particularly during periods of unusual market activity.
 
             ---
 
-            ## 🧠 Features Used in the Model
+            ## 🧠 Engineered Features used in the model
+            - **ma3**: 3-period moving average of weighted average price.
+            - **...**
 
-            Our model uses the following engineered features, which capture various dimensions of market activity and price-volume interaction:
-
-            - ma3: 3-period moving average of weighted average price.
-
-            - ...
-
-
+            ---
 
             ## ⚙️ App Functionality
-
-            - Visualisation: Interactive plots for volatility predictions. 
-
-            - Model Diagnostics: Residual analysis and performance metrics. 
-
-            - Performance Evaluation: Training time, Directional Accuracy Increase and RMSEDecrease to evaluate the impact of volume model.
-
-            - Customization: Option to choose different dataset, time id and features to predict and visualise.
+            - **Visualisation**: Interactive plots for volatility predictions. 
+            - **Model Diagnostics**: Residual analysis and performance metrics. 
+            - **Performance Evaluation**: Training time, Directional Accuracy Increase and RMSEDecrease to evaluate the impact of volume model.
+            - **Customization**: Option to choose different dataset, time id and features to predict and visualise.
 
 
             """,
         )
 
-        return ui.div(md, class_="my-3")
+        return ui.div(md, class_="my-0")
     
 
 app = App(app_ui, server)
