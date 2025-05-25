@@ -215,10 +215,10 @@ def server(input, output, session):
         X = stock[BASE_MODEL_FEATURES]
         y = stock['future']
         stock = stock.sort_values(["time_id", "bucket"])
-        split_index = int(len(stock) * 0.8)
-        X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
-        y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]  
-        # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
+        # split_index = int(len(stock) * 0.8)
+        # X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
+        # y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]  
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
         y_train_scaled = y_train * 10000
         start = time.time()
         # model = XGBRegressor(
@@ -263,10 +263,10 @@ def server(input, output, session):
         X = stock[VOL_MODEL_FEATURES]
         y = stock['residual']
         stock = stock.sort_values(["time_id", "bucket"])
-        split_index = int(len(stock) * 0.8)
-        X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
-        y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]  
-        # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
+        # split_index = int(len(stock) * 0.8)
+        # X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
+        # y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]  
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
         y_train_scaled = y_train * 10000
         start = time.time()
         # model = XGBRegressor(
