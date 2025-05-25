@@ -354,7 +354,7 @@ def server(input, output, session):
                     dict(
                         text="Base Model Feature Importance",
                         xref="paper", yref="paper",
-                        x=0, y=1.05,  # left aligned (near 0), y=top of first subplot
+                        x=0, y=1.07,  # left aligned (near 0), y=top of first subplot
                         showarrow=False,
                         font=dict(size=14),
                         align="left"
