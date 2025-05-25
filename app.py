@@ -198,6 +198,19 @@ def server(input, output, session):
         return stock
     
     @reactive.calc
+    def model_data_no_dropna():
+        stock = stock_df()
+        if stock.empty or input.timeid() is None:
+            return pd.DataFrame(columns=df.columns)
+        stock = stock[stock['time_id_group'] == np.floor(int(input.timeid()) / time_group_size)]
+        stock = get_stock_characteristics(stock)
+        stock = get_stock_feature(stock)
+        stock = get_volume_feature(stock)
+        stock = stock.groupby('time_id', group_keys=False).apply(process_group)
+
+        return stock
+    
+    @reactive.calc
     def base_model():
         stock = model_data()
         if stock.empty:
@@ -408,14 +421,15 @@ def server(input, output, session):
             return None
         
         stock = get_vol_residual()[get_vol_residual()["time_id"] == int(input.timeid())]
+        stock_no_dropna = model_data_no_dropna()[model_data_no_dropna()["time_id"] == int(input.timeid())]
         split_index = int(len(stock) * 0)
         
 
         fig = go.Figure()
         fig.add_trace(
                 go.Scatter(
-                    x=stock["bucket"],
-                    y=stock['future'],
+                    x=stock_no_dropna["bucket"],
+                    y=stock_no_dropna['future'],
                     mode="lines",
                     line=dict(color=px.colors.qualitative.Plotly[0]), 
                     name='Realised Volatility',
