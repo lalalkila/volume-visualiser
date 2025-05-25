@@ -43,6 +43,7 @@ VOL_MODEL_FEATURES = ['base_pred',
                     'volume_price_corr', 'vwap_deviation', 'order_flow_imbalance',
                     'cumulative_order_flow', 'volume_volatility', 
                     'bs_volatility', 'bs_momentum', 
+                    # 'volume_regime', 'volume_regime',
                     'volume_ma_interaction', 'bs_volume_interaction'
                     ]
 
@@ -219,10 +220,10 @@ def server(input, output, session):
         X = stock[BASE_MODEL_FEATURES]
         y = stock['future']
         stock = stock.sort_values(["time_id", "bucket"])
-        split_index = int(len(stock) * 0.8)
-        X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
-        y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]  
-        # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
+        # split_index = int(len(stock) * 0.8)
+        # X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
+        # y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]  
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
 
         # X_train_price = scaler_price.fit_transform(X_train)
         # X_test_price = scaler_price.transform(X_test)
@@ -243,7 +244,7 @@ def server(input, output, session):
                                     objective='reg:squarederror'
                                 )
         # model = RidgeCV(alphas=[0.1, 1.0, 10.0])
-        model = LinearRegression()
+        # model = LinearRegression()
         model.fit(X_train, y_train_scaled)
         end = time.time()
         base_runtime.set(end - start)
@@ -274,10 +275,10 @@ def server(input, output, session):
 
         # scaler_volume = RobustScaler()
         stock = stock.sort_values(["time_id", "bucket"])
-        split_index = int(len(stock) * 0.8)
-        X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
-        y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]  
-        # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
+        # split_index = int(len(stock) * 0.8)
+        # X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
+        # y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]  
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
         # X_train_volume= scaler_volume.fit_transform(X_train)
         # X_test_volume = scaler_volume.transform(X_test)
         y_train_scaled = y_train * 10000
@@ -296,7 +297,7 @@ def server(input, output, session):
                                     objective='reg:squarederror'
                                 )
         # model = RidgeCV(alphas=[0.1, 1.0, 10.0])
-        model = LinearRegression()
+        # model = LinearRegression()
         model.fit(X_train, y_train_scaled)
         end = time.time()
         vol_runtime.set(end - start)
@@ -411,27 +412,10 @@ def server(input, output, session):
             - `bid_price2`
             - `ask_price2`
 
-            > Make sure the CSV uses tab (`\\t`) as a delimiter.
+            > IMPORTANT: Make sure the CSV uses tab (`\\t`) as a delimiter.
                                
-            ### Example:
-            ~~~
-            stock_id time_id seconds_in_bucket bid_price1 ask_price1 bid_price2 ask_price2
-            8382 12 1.0 722.17 722.63 722.15 722.64
-            8382 12 2.0 722.18 722.88 722.17 722.98
-            ... ... ... ... ... ... ...             
-            ~~~
-            ~~~
-            stock_id\ttime_id\tseconds_in_bucket\tbid_price1\task_price1\tbid_price2\task_price2
-            8382\t12\t1.0\t722.17\t722.63\t722.15\t722.64
-            8382\t12\t2.0\t722.18\t722.88\t722.17\t722.98
-            ...\t...\t...\t...\t...\t...\t...
-            ~~~
-            ```
-            stock_id\ttime_id\tseconds_in_bucket\tbid_price1\task_price1\tbid_price2\task_price2
-            8382\t12\t1.0\t722.17\t722.63\t722.15\t722.64
-            8382\t12\t2.0\t722.18\t722.88\t722.17\t722.98
-            ...\t...\t...\t...\t...\t...\t...
-            ```
+            ### Example:         
+            
             | stock_id | time_id | seconds_in_bucket | bid_price1 | ask_price1 | bid_price2 | ask_price2 |
             |----------|---------|-------------------|------------|------------|------------|------------|
             | 8382     | 12      | 1.0               | 722.17     | 722.63     | 722.15     | 722.64     |
@@ -617,15 +601,15 @@ def server(input, output, session):
             """
             # 📈 Volatility Prediction Shiny App  
 
-            ### Adjusted Residual Model with Volume Features
+            ### Volume-Adjusted Residual Model with Volume Features
 
-            Welcome to our Shiny app for predicting stock volatility using an **Volume-Adjusted Residual Model** that leverages key **volume-driven features**. This tool is designed to assist traders, analysts, and researchers in forecasting short-term price fluctuations by combining traditional volatility modeling with volume-based signals.
+            Welcome to our Shiny app for predicting stock volatility using an **Volume-Adjusted Residual Model** that leverages key **volume-driven features**. This tool is designed to assist researchers in forecasting short-term price fluctuations by combining traditional volatility modeling with volume-based signals.
 
             ---
 
-            ## 🔍 What Is the Adjusted Residual Model?
+            ## 🔍 What Is the Volume-Adjusted Residual Model?
 
-            The **Adjusted Residual Model** enhances baseline volatility predictions by adjusting their residuals using XGBoost algorithms. These adjustments are informed by features derived from trading volume, allowing for more responsive and accurate volatility forecasts, particularly during periods of unusual market activity.
+            The **Volume-Adjusted Residual Model** enhances baseline volatility predictions by adjusting their residuals using XGBoost algorithms. These adjustments are informed by features derived from trading volume, allowing for more responsive and accurate volatility forecasts, particularly during periods of unusual market activity.
 
             ---
 
@@ -633,31 +617,21 @@ def server(input, output, session):
 
             Our model uses the following engineered features, which capture various dimensions of market activity and price-volume interaction:
 
-            - ma5: 5-period moving average of weighted average price.
+            - ma3: 3-period moving average of weighted average price.
 
-            - bs_ratio: Bid-ask size ratio, indicating supply-demand imbalance.
+            - ...
 
-            - bs_chg: Change in bid-ask spread, capturing short-term liquidity shifts.
 
-            - bd: Buy-side depth—aggregate buy-side volume near the best bid.
-
-            - ad: Ask-side depth—aggregate sell-side volume near the best ask.
-
-            - OBV (On-Balance Volume): A cumulative volume-based momentum indicator.
-
-            - VWAP (Volume-Weighted Average Price): The average price weighted by volume.
-
-            - Volume_MA: Moving average of trade volume, capturing trends in trading intensity.
 
             ## ⚙️ App Functionality
 
-            - Visualisation: Interactive plots for volatility predictions. (more)
+            - Visualisation: Interactive plots for volatility predictions. 
 
-            - Model Diagnostics: Residual analysis and performance metrics. (talk about feature importance)
+            - Model Diagnostics: Residual analysis and performance metrics. 
 
-            - Talk about metrics at the top, run time for trader to evaluate smoething
+            - Performance Evaluation: Training time, Directional Accuracy Increase and RMSEDecrease to evaluate the impact of volume model.
 
-            - Customization: Choose different dataset, time id and features to predict and visualise
+            - Customization: Option to choose different dataset, time id and features to predict and visualise.
 
 
             """,
