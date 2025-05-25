@@ -6,6 +6,8 @@ import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
 import plotly.subplots as sp
+from sklearn.preprocessing import StandardScaler, RobustScaler
+
 
 from xgboost import XGBRegressor
 from sklearn.linear_model import LinearRegression, RidgeCV
@@ -116,32 +118,32 @@ def server(input, output, session):
                 df['bucket'] = np.floor(df['seconds_in_bucket'] / 20)
                 df = df.groupby(['stock_id', 'time_id', 'bucket']).mean()[['bid_price1','ask_price1','bid_price2','ask_price2','bid_size1','ask_size1','bid_size2', 'ask_size2']].round(4).reset_index()
                 
-                # # Create full range of time_ids
-                # full_time_ids = pd.DataFrame({'time_id': range(stock['time_id'].min(), stock['time_id'].max() + 1)})
+                # # # Create full range of time_ids
+                # # full_time_ids = pd.DataFrame({'time_id': range(stock['time_id'].min(), stock['time_id'].max() + 1)})
                 
-                # # Merge to add missing ones
-                # stock = full_time_ids.merge(stock, on='time_id', how='left')
-                # stock = stock.sort_values(by=['time_id', 'bucket'])
+                # # # Merge to add missing ones
+                # # stock = full_time_ids.merge(stock, on='time_id', how='left')
+                # # stock = stock.sort_values(by=['time_id', 'bucket'])
 
-                # Get all unique stock_ids in the dataframe
-                unique_stock_ids = df['stock_id'].unique()
+                # # Get all unique stock_ids in the dataframe
+                # unique_stock_ids = df['stock_id'].unique()
 
-                # Create a template with all combinations of stock_id and time_id
-                min_time_id = df['time_id'].min()
-                max_time_id = df['time_id'].max()
-                time_range = range(min_time_id, max_time_id + 1)
+                # # Create a template with all combinations of stock_id and time_id
+                # min_time_id = df['time_id'].min()
+                # max_time_id = df['time_id'].max()
+                # time_range = range(min_time_id, max_time_id + 1)
 
-                # Create a cross join between stock_ids and time_ids
-                template = pd.DataFrame([(stock_id, time_id) 
-                                    for stock_id in unique_stock_ids 
-                                    for time_id in time_range],
-                                    columns=['stock_id', 'time_id'])
+                # # Create a cross join between stock_ids and time_ids
+                # template = pd.DataFrame([(stock_id, time_id) 
+                #                     for stock_id in unique_stock_ids 
+                #                     for time_id in time_range],
+                #                     columns=['stock_id', 'time_id'])
 
-                # Merge the original dataframe with the template
-                df_complete = template.merge(df, on=['stock_id', 'time_id'], how='left')
+                # # Merge the original dataframe with the template
+                # df_complete = template.merge(df, on=['stock_id', 'time_id'], how='left')
 
-                # Sort the result
-                df_complete = df_complete.sort_values(by=['stock_id', 'time_id', 'bucket'])
+                # # Sort the result
+                # df_complete = df_complete.sort_values(by=['stock_id', 'time_id', 'bucket'])
                 
                 data.set(df)
                 
@@ -212,6 +214,8 @@ def server(input, output, session):
         if data.get().empty:
             return pd.DataFrame()
         stock = model_data()
+        # scaler_price = StandardScaler()
+        # scaler_volume = RobustScaler()
         X = stock[BASE_MODEL_FEATURES]
         y = stock['future']
         stock = stock.sort_values(["time_id", "bucket"])
@@ -219,23 +223,26 @@ def server(input, output, session):
         # X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
         # y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]  
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
-        y_train_scaled = y_train * 10000
+
+        # X_train_price = scaler_price.fit_transform(X_train)
+        # X_test_price = scaler_price.transform(X_test)
+
         start = time.time()
-        # model = XGBRegressor(
-        #                             n_estimators=200,
-        #                             max_depth=4,
-        #                             learning_rate=0.05,
-        #                             subsample=0.8,
-        #                             colsample_bytree=0.8,
-        #                             reg_alpha=0.1,
-        #                             reg_lambda=1.0,
-        #                             random_state=42,
-        #                             verbosity=0,
-        #                             objective='reg:squarederror'
-        #                         )
-        model = RidgeCV(alphas=[0.1, 1.0, 10.0])
+        model = XGBRegressor(
+                                    n_estimators=200,
+                                    max_depth=4,
+                                    learning_rate=0.05,
+                                    subsample=0.8,
+                                    colsample_bytree=0.8,
+                                    reg_alpha=0.1,
+                                    reg_lambda=1.0,
+                                    random_state=42,
+                                    verbosity=0,
+                                    objective='reg:squarederror'
+                                )
+        # model = RidgeCV(alphas=[0.1, 1.0, 10.0])
         # model = LinearRegression()
-        model.fit(X_train, y_train_scaled)
+        model.fit(X_train, y_train)
         end = time.time()
         base_runtime.set(end - start)
 
@@ -246,7 +253,7 @@ def server(input, output, session):
         if data.get().empty:
             return pd.DataFrame()
         stock = model_data()
-        stock['base_pred'] = base_model().predict(stock[BASE_MODEL_FEATURES]) / 10000
+        stock['base_pred'] = base_model().predict(stock[BASE_MODEL_FEATURES])
         stock['residual'] = stock['future'] - stock['base_pred']
 
         pred = np.clip(stock['base_pred'], 1e-8, None)
@@ -262,27 +269,29 @@ def server(input, output, session):
         stock = get_residual()
         X = stock[VOL_MODEL_FEATURES]
         y = stock['residual']
+
+        # scaler_volume = RobustScaler()
         stock = stock.sort_values(["time_id", "bucket"])
         # split_index = int(len(stock) * 0.8)
         # X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
         # y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]  
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
-        y_train_scaled = y_train * 10000
+      
         start = time.time()
-        # model = XGBRegressor(
-        #                             n_estimators=200,
-        #                             max_depth=4,
-        #                             learning_rate=0.05,
-        #                             subsample=0.8,
-        #                             colsample_bytree=0.8,
-        #                             reg_alpha=0.1,
-        #                             reg_lambda=1.0,
-        #                             random_state=42,
-        #                             verbosity=0,
-        #                             objective='reg:squarederror'
-        #                         )
-        model = RidgeCV(alphas=[0.1, 1.0, 10.0])
-        model.fit(X_train, y_train_scaled)
+        model = XGBRegressor(
+                                    n_estimators=200,
+                                    max_depth=4,
+                                    learning_rate=0.05,
+                                    subsample=0.8,
+                                    colsample_bytree=0.8,
+                                    reg_alpha=0.1,
+                                    reg_lambda=1.0,
+                                    random_state=42,
+                                    verbosity=0,
+                                    objective='reg:squarederror'
+                                )
+        # model = RidgeCV(alphas=[0.1, 1.0, 10.0])
+        model.fit(X_train, y_train)
         end = time.time()
         vol_runtime.set(end - start)
 
@@ -293,7 +302,7 @@ def server(input, output, session):
         if data.get().empty:
             return pd.DataFrame()
         stock = get_residual()
-        stock['vol_pred'] = vol_model().predict(stock[VOL_MODEL_FEATURES]) / 10000
+        stock['vol_pred'] = vol_model().predict(stock[VOL_MODEL_FEATURES]) 
         stock['vol_residual'] = stock['future'] - (stock['base_pred'] + stock['vol_pred'])
 
         pred = np.clip(stock['vol_residual'], 1e-8, None)
