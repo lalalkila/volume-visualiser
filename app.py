@@ -362,7 +362,7 @@ def server(input, output, session):
                     dict(
                         text="Volume Model Feature Importance",
                         xref="paper", yref="paper",
-                        x=0, y=0.45,  # left aligned, y=middle lower for second subplot
+                        x=0, y=0.46,  # left aligned, y=middle lower for second subplot
                         showarrow=False,
                         font=dict(size=14),
                         align="left"
