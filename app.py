@@ -40,8 +40,8 @@ BASE_MODEL_FEATURES = ['ma3', 'mid_price']
 VOL_MODEL_FEATURES = ['base_pred',
                     'volume_momentum_5', 'volume_trend',
                     'volume_price_corr', 'vwap_deviation', 'order_flow_imbalance',
-                    'cumulative_order_flow', 'volume_volatility', 'volume_regime',
-                    'bs_volatility', 'bs_momentum', 'volume_percentile',
+                    'cumulative_order_flow', 'volume_volatility', 
+                    'bs_volatility', 'bs_momentum',
                     'volume_ma_interaction', 'bs_volume_interaction'
                     ]
 
@@ -59,7 +59,7 @@ app_ui = ui.page_navbar(
         "Interactive Model",
         ui.page_sidebar(
             ui.sidebar(
-                ui.input_file("file", "Model Explorer\nUpload a CSV file", accept=".csv"),
+                ui.input_file("file", "Upload a CSV file", accept=".csv"),
                 ui.input_select(
                     "timeid",
                     "Time ID",
@@ -381,27 +381,10 @@ def server(input, output, session):
             - `bid_price2`
             - `ask_price2`
 
-            > Make sure the CSV uses tab (`\\t`) as a delimiter.
+            > NOTE: Make sure the CSV uses tab (`\\t`) as a delimiter.
                                
             ### Example:
-            ~~~
-            stock_id time_id seconds_in_bucket bid_price1 ask_price1 bid_price2 ask_price2
-            8382 12 1.0 722.17 722.63 722.15 722.64
-            8382 12 2.0 722.18 722.88 722.17 722.98
-            ... ... ... ... ... ... ...             
-            ~~~
-            ~~~
-            stock_id\ttime_id\tseconds_in_bucket\tbid_price1\task_price1\tbid_price2\task_price2
-            8382\t12\t1.0\t722.17\t722.63\t722.15\t722.64
-            8382\t12\t2.0\t722.18\t722.88\t722.17\t722.98
-            ...\t...\t...\t...\t...\t...\t...
-            ~~~
-            ```
-            stock_id\ttime_id\tseconds_in_bucket\tbid_price1\task_price1\tbid_price2\task_price2
-            8382\t12\t1.0\t722.17\t722.63\t722.15\t722.64
-            8382\t12\t2.0\t722.18\t722.88\t722.17\t722.98
-            ...\t...\t...\t...\t...\t...\t...
-            ```
+ 
             | stock_id | time_id | seconds_in_bucket | bid_price1 | ask_price1 | bid_price2 | ask_price2 |
             |----------|---------|-------------------|------------|------------|------------|------------|
             | 8382     | 12      | 1.0               | 722.17     | 722.63     | 722.15     | 722.64     |
@@ -587,49 +570,37 @@ def server(input, output, session):
             """
             # 📈 Volatility Prediction Shiny App  
 
-            ### Adjusted Residual Model with Volume Features
-
+            ### Volume-Adjusted Residual Model with Volume Features
             Welcome to our Shiny app for predicting stock volatility using an **Volume-Adjusted Residual Model** that leverages key **volume-driven features**. This tool is designed to assist traders, analysts, and researchers in forecasting short-term price fluctuations by combining traditional volatility modeling with volume-based signals.
 
             ---
 
-            ## 🔍 What Is the Adjusted Residual Model?
-
-            The **Adjusted Residual Model** enhances baseline volatility predictions by adjusting their residuals using XGBoost algorithms. These adjustments are informed by features derived from trading volume, allowing for more responsive and accurate volatility forecasts, particularly during periods of unusual market activity.
+            ## 🔍 What Is the Volume-Adjusted Residual Model?
+            The **Volume-Adjusted Residual Model** enhances baseline volatility predictions by adjusting their residuals using XGBoost algorithms. These adjustments are informed by features derived from trading volume, allowing for more responsive and accurate volatility forecasts, particularly during periods of unusual market activity.
 
             ---
 
             ## 🧠 Features Used in the Model
-
             Our model uses the following engineered features, which capture various dimensions of market activity and price-volume interaction:
-
-            - ma5: 5-period moving average of weighted average price.
-
-            - bs_ratio: Bid-ask size ratio, indicating supply-demand imbalance.
-
-            - bs_chg: Change in bid-ask spread, capturing short-term liquidity shifts.
-
-            - bd: Buy-side depth—aggregate buy-side volume near the best bid.
-
-            - ad: Ask-side depth—aggregate sell-side volume near the best ask.
-
-            - OBV (On-Balance Volume): A cumulative volume-based momentum indicator.
-
-            - VWAP (Volume-Weighted Average Price): The average price weighted by volume.
-
-            - Volume_MA: Moving average of trade volume, capturing trends in trading intensity.
+            - **`ma3`**: 5-period moving average of weighted average price.
+            - **`mid_price`**:  Average of best bid and best ask prices
+            - **`volume_momentum_5`**: Percentage change in 5-period volume moving average
+            - **`volume_trend`**: Linear trend of volume over a 5-period window.
+            - **`volume_price_corr`**: 5-period rolling correlation between volume and mid-price.
+            - **`vwap_deviation`**: Deviation of current mid-price from the volume-weighted average price over 5 periods.
+            - **`order_flow_imbalance`**: Normalized difference between bid and ask depth.
+            - **`cumulative_order_flow`**: Rolling 5-period sum of order flow imbalance.
+            - **`volume_volatility`**: Rolling standard deviation of volume.
+            - **`bs_volatility`**: Volatility of bid-ask spread ratio over 5 periods.
+            - **`bs_momentum`**: 3-period moving average of bid-ask spread changes.
+            - **`volume_ma_interaction`**: Interaction term between volume moving average and a 5-period price moving average.
+            - **`bs_volume_interaction`**:  Interaction term between bid-ask spread ratio and.
 
             ## ⚙️ App Functionality
-
-            - Visualisation: Interactive plots for volatility predictions. (more)
-
-            - Model Diagnostics: Residual analysis and performance metrics. (talk about feature importance)
-
-            - Talk about metrics at the top, run time for trader to evaluate smoething
-
-            - Customization: Choose different dataset, time id and features to predict and visualise
-
-
+            - **Visualisation**: Interactive plots for volatility predictions. 
+            - **Model Diagnostics**: Residual analysis and performance metrics. 
+            - **Performance Evaluation**: Training time, Directional Accuracy Increase and RMSEDecrease to evaluate the impact of volume model.
+            - **Customization**: Option to choose different dataset, time id and features to predict and visualise.
             """,
         )
 
