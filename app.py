@@ -83,7 +83,7 @@ app_ui = ui.page_navbar(
             ),
             ui.layout_columns(
                 ui.card(
-                    ui.card_header("Volatility forecasting"),
+                    ui.card_header("Volatility Forecasting"),
                     ui.output_ui("model_explorer_content"),
                     full_screen=True,
                 ),
@@ -99,8 +99,8 @@ app_ui = ui.page_navbar(
     ),
     id="navbar",
     header=ui.include_css(app_dir / "styles.css"),
-    title="Volume predictions",
-    window_title="Volume predictions",
+    title="Volatility predictions",
+    window_title="Volatility predictions",
     fillable=True,
     
 )
