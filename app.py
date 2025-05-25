@@ -322,7 +322,7 @@ def server(input, output, session):
         # Create subplot with 2 rows
         fig = sp.make_subplots(
             rows=2, cols=1,
-            subplot_titles=("Base Model Feature Importance", "Volume Model Feature Importance")
+            # subplot_titles=("Base Model Feature Importance", "Volume Model Feature Importance")
         )
 
         # Volume model bar chart
@@ -350,9 +350,32 @@ def server(input, output, session):
         )
 
         fig.update_layout(
-            showlegend=False,
+            annotations=[
+                    dict(
+                        text="Base Model Feature Importance",
+                        xref="paper", yref="paper",
+                        x=0, y=1.05,  # left aligned (near 0), y=top of first subplot
+                        showarrow=False,
+                        font=dict(size=14),
+                        align="left"
+                    ),
+                    dict(
+                        text="Volume Model Feature Importance",
+                        xref="paper", yref="paper",
+                        x=0, y=0.45,  # left aligned, y=middle lower for second subplot
+                        showarrow=False,
+                        font=dict(size=14),
+                        align="left"
+                    )
+                ],
+                margin=dict(l=55, r=20, t=40, b=20),
+                showlegend=False,
         )
 
+        fig.update_yaxes(tickfont=dict(size=8), automargin=True, row=1, col=1)
+        fig.update_yaxes(tickfont=dict(size=8), automargin=True, row=2, col=1)
+
+        
         return fig
 
         
@@ -362,7 +385,7 @@ def server(input, output, session):
             return ui.markdown("""
             ### 📊 Welcome to the Model Explorer 
 
-            Please upload a CSV file to get started. The data should include:
+            Please upload a CSV file to get started. The data should include these columns:
             - `stock_id`
             - `time_id`
             - `seconds_in_bucket`
@@ -372,6 +395,32 @@ def server(input, output, session):
             - `ask_price2`
 
             > Make sure the CSV uses tab (`\\t`) as a delimiter.
+                               
+            ### Example:
+            ~~~
+            stock_id time_id seconds_in_bucket bid_price1 ask_price1 bid_price2 ask_price2
+            8382 12 1.0 722.17 722.63 722.15 722.64
+            8382 12 2.0 722.18 722.88 722.17 722.98
+            ... ... ... ... ... ... ...             
+            ~~~
+            ~~~
+            stock_id\ttime_id\tseconds_in_bucket\tbid_price1\task_price1\tbid_price2\task_price2
+            8382\t12\t1.0\t722.17\t722.63\t722.15\t722.64
+            8382\t12\t2.0\t722.18\t722.88\t722.17\t722.98
+            ...\t...\t...\t...\t...\t...\t...
+            ~~~
+            ```
+            stock_id\ttime_id\tseconds_in_bucket\tbid_price1\task_price1\tbid_price2\task_price2
+            8382\t12\t1.0\t722.17\t722.63\t722.15\t722.64
+            8382\t12\t2.0\t722.18\t722.88\t722.17\t722.98
+            ...\t...\t...\t...\t...\t...\t...
+            ```
+            | stock_id | time_id | seconds_in_bucket | bid_price1 | ask_price1 | bid_price2 | ask_price2 |
+            |----------|---------|-------------------|------------|------------|------------|------------|
+            | 8382     | 12      | 1.0               | 722.17     | 722.63     | 722.15     | 722.64     |
+            | 8382     | 12      | 2.0               | 722.18     | 722.88     | 722.17     | 722.98     |
+            | ...      | ...     | ...               | ...        | ...        | ...        | ...        |
+                               
 
 
             After loading, you'll be able to:
@@ -454,13 +503,14 @@ def server(input, output, session):
     def traintime():
         if data.get().empty:
             return ui.value_box(
-                "Model training time",
+                ui.HTML(f"Model training time<br>(Final)"),
                 "0.00 seconds",
                 showcase=icon_svg("paper-plane"),
                 theme="text-black",
-            )   
+            )
+
         return ui.value_box(
-            "Model training time",
+            ui.HTML(f"Model training time<br>(Final)"),
             f"{np.round(base_runtime.get() + vol_runtime.get(), 4)} seconds",
             showcase=icon_svg("paper-plane"),
             theme="text-green" if base_runtime.get() + vol_runtime.get() < 1 else "text-red",
@@ -470,34 +520,44 @@ def server(input, output, session):
     def directionalAccuracy():
         if data.get().empty:
             return ui.value_box(
-                "Directional Accuracy (Full model)",
-                "0.00",
-                showcase=icon_svg("bullseye"),
+                ui.HTML(f"Directional Accuracy Gain<br>(Base → Final)"),
+                "0.00%",
+                showcase=icon_svg("arrow-trend-up"),
                 theme="text-black"
             )
         
 
-        
-        stock_id = int(input.stockid())
         df = get_vol_residual()
+        y_pred_base = df["base_pred"]
         y_pred_combined =df['base_pred'] + df['vol_pred']
         y_true = df['future']    
 
         # Compute direction of change
+        base_diff = np.diff(y_pred_base)
         pred_diff = np.diff(y_pred_combined)
         real_diff = np.diff(y_true)
 
         # Directional accuracy: proportion of times model correctly predicts direction
         correct_direction = (pred_diff * real_diff) > 0
-        directional_accuracy = np.mean(correct_direction)
+        directional_accuracy = np.mean(correct_direction) * 100
+
+        correct_direction_base = (base_diff * real_diff) > 0
+        directional_accuracy_base = np.mean(correct_direction_base) * 100
+
+        directional_acc_increase = directional_accuracy - directional_accuracy_base
 
 
+        icon = (
+            "arrow-up" if directional_acc_increase > 0 else
+            "arrow-down" if directional_acc_increase < 0 else
+            "minus"
+        )
 
         return ui.value_box(
-            "Directional Accuracy (Full model)",
-            f"{directional_accuracy:.2f}",
-            showcase=icon_svg("bullseye"),
-            theme="text-green" if directional_accuracy > 0.5 else "text-red",
+            ui.HTML(f"Directional Accuracy Gain<br>(Base → Final)"),
+            f"{directional_acc_increase:.2f}%",
+            showcase=icon_svg(icon),
+            theme="text-green" if directional_acc_increase > 0 else "text-red",
         )
     
     @render.ui
@@ -505,7 +565,7 @@ def server(input, output, session):
     def improvement():
         if data.get().empty:
             return ui.value_box(
-                "RMSE Drop (Base → Final)",
+                ui.HTML(f"RMSE Decrease<br>(Base → Final)"),
                 "0.00%",
                 showcase=icon_svg("bullseye"),
                 theme="text-black"
@@ -517,18 +577,21 @@ def server(input, output, session):
         print(f"VOL RMSE: {vol_rmse}, BASE RMSE: {base_rmse}")
 
         decrease =  (base_rmse - vol_rmse) / base_rmse * 100
+        print(f"Decrease: {decrease}")
 
-        # decrease = np.round((1 - vol_rmse / base_rmse) * 100, 2)
-
+        icon = (
+            "arrow-up" if decrease > 0 else
+            "arrow-down" if decrease < 0 else
+            "minus"
+        )
 
         return ui.value_box(
-            "RMSE Drop (Base → Final)",
+            ui.HTML(f"RMSE Decrease<br>(Base → Final)"),
             f"{decrease:.2f}%",
-            showcase=icon_svg("bullseye"),
+            showcase=icon_svg(icon),
             theme="text-green" if decrease > 0 else "text-red",
         )
-        # increase = np.round((1 - np.sqrt(np.mean(np.square(get_residual()['vol_residual']))) / np.sqrt(np.mean(np.square(get_residual()['residual'])))) * 100, 2)
-        # return f"{'+' if increase > 0 else ''}{increase}%"
+
     
     @render.ui
     def data_intro():
