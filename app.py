@@ -219,13 +219,15 @@ def server(input, output, session):
         X = stock[BASE_MODEL_FEATURES]
         y = stock['future']
         stock = stock.sort_values(["time_id", "bucket"])
-        # split_index = int(len(stock) * 0.8)
-        # X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
-        # y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]  
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
+        split_index = int(len(stock) * 0.8)
+        X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
+        y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]  
+        # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
 
         # X_train_price = scaler_price.fit_transform(X_train)
         # X_test_price = scaler_price.transform(X_test)
+        y_train_scaled = y_train * 10000
+
 
         start = time.time()
         model = XGBRegressor(
@@ -241,8 +243,8 @@ def server(input, output, session):
                                     objective='reg:squarederror'
                                 )
         # model = RidgeCV(alphas=[0.1, 1.0, 10.0])
-        # model = LinearRegression()
-        model.fit(X_train, y_train)
+        model = LinearRegression()
+        model.fit(X_train, y_train_scaled)
         end = time.time()
         base_runtime.set(end - start)
 
@@ -253,7 +255,7 @@ def server(input, output, session):
         if data.get().empty:
             return pd.DataFrame()
         stock = model_data()
-        stock['base_pred'] = base_model().predict(stock[BASE_MODEL_FEATURES])
+        stock['base_pred'] = base_model().predict(stock[BASE_MODEL_FEATURES]) / 10000
         stock['residual'] = stock['future'] - stock['base_pred']
 
         pred = np.clip(stock['base_pred'], 1e-8, None)
@@ -272,11 +274,14 @@ def server(input, output, session):
 
         # scaler_volume = RobustScaler()
         stock = stock.sort_values(["time_id", "bucket"])
-        # split_index = int(len(stock) * 0.8)
-        # X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
-        # y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]  
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
-      
+        split_index = int(len(stock) * 0.8)
+        X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
+        y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]  
+        # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
+        # X_train_volume= scaler_volume.fit_transform(X_train)
+        # X_test_volume = scaler_volume.transform(X_test)
+        y_train_scaled = y_train * 10000
+
         start = time.time()
         model = XGBRegressor(
                                     n_estimators=200,
@@ -291,7 +296,8 @@ def server(input, output, session):
                                     objective='reg:squarederror'
                                 )
         # model = RidgeCV(alphas=[0.1, 1.0, 10.0])
-        model.fit(X_train, y_train)
+        model = LinearRegression()
+        model.fit(X_train, y_train_scaled)
         end = time.time()
         vol_runtime.set(end - start)
 
@@ -302,7 +308,7 @@ def server(input, output, session):
         if data.get().empty:
             return pd.DataFrame()
         stock = get_residual()
-        stock['vol_pred'] = vol_model().predict(stock[VOL_MODEL_FEATURES]) 
+        stock['vol_pred'] = vol_model().predict(stock[VOL_MODEL_FEATURES]) / 10000
         stock['vol_residual'] = stock['future'] - (stock['base_pred'] + stock['vol_pred'])
 
         pred = np.clip(stock['vol_residual'], 1e-8, None)
