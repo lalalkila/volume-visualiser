@@ -36,8 +36,8 @@ features = [
 # BASE_MODEL_FEATURES = ['past','ma5', 'mid_price', 'spread_lvl_1', 'spread_lvl_2']
 # VOL_MODEL_FEATURES = ['past','bs_ratio', 'bs_chg', 'bd', 'ad',  'OBV', 'VWAP', 'Volume_MA']
 
-BASE_MODEL_FEATURES = ['ma5', 'mid_price']
-VOL_MODEL_FEATURES = ['base_pred',
+BASE_MODEL_FEATURES = ['ma5', 'mid_price','volatility']
+VOL_MODEL_FEATURES = ['base_pred', 'volatility',
                     'volume_momentum_5', 'volume_trend',
                     'volume_price_corr', 'vwap_deviation', 'order_flow_imbalance',
                     'cumulative_order_flow', 'volume_volatility', 
@@ -97,8 +97,8 @@ app_ui = ui.page_navbar(
     ),
     id="navbar",
     header=ui.include_css(app_dir / "styles.css"),
-    title="Volatility predictions",
-    window_title="Volatility predictions",
+    title="Volume-Volatility Eval",
+    window_title="Volume-Volatilty Eval",
     fillable=True,
     
 )
@@ -421,15 +421,13 @@ def server(input, output, session):
             return None
         
         stock = get_vol_residual()[get_vol_residual()["time_id"] == int(input.timeid())]
-        stock_no_dropna = model_data_no_dropna()[model_data_no_dropna()["time_id"] == int(input.timeid())]
-        split_index = int(len(stock) * 0)
         
 
         fig = go.Figure()
         fig.add_trace(
                 go.Scatter(
-                    x=stock_no_dropna["bucket"],
-                    y=stock_no_dropna['future'],
+                    x=stock["bucket"],
+                    y=stock['future'],
                     mode="lines",
                     line=dict(color=px.colors.qualitative.Plotly[0]), 
                     name='Realised Volatility',
@@ -582,43 +580,44 @@ def server(input, output, session):
 
         md = ui.markdown(
             """
-            # 📈 Volatility Prediction Shiny App  
+            # 📈 Volume-Volatilty Evaluation App
 
             ### Volume-Adjusted Residual Model with Volume Features
-            Welcome to our Shiny app for predicting stock volatility using an **Volume-Adjusted Residual Model** that leverages key **volume-driven features**. This tool is designed to assist traders, analysts, and researchers in forecasting short-term price fluctuations by combining traditional volatility modeling with volume-based signals.
+            Welcome to our Shiny app for evaluating the impact of volume-driven features to predict stock volatility using an *Volume-Adjusted Residual Model*. This tool is designed to assist traders in researching volume-based signals power on short-term price fluctuations.
 
             ---
 
             ## 🔍 What Is the Volume-Adjusted Residual Model?
-            The **Volume-Adjusted Residual Model** enhances baseline volatility predictions by adjusting their residuals using XGBoost algorithms. These adjustments are informed by features derived from trading volume, allowing for more responsive and accurate volatility forecasts, particularly during periods of unusual market activity.
+            The *Volume-Adjusted Residual Model* enhances baseline volatility predictions by adjusting their residuals using XGBoost algorithms. These adjustments are informed by features derived from trading volume, allowing for more responsive and accurate volatility forecasts, particularly during periods of unusual market activity.
 
             ---
 
             ## 🧠 Features Used in the Model
             Our model uses the following engineered features, which capture various dimensions of market activity and price-volume interaction:
-            - **`ma3`**: 5-period moving average of weighted average price.
-            - **`mid_price`**:  Average of best bid and best ask prices
-            - **`volume_momentum_5`**: Percentage change in 5-period volume moving average
-            - **`volume_trend`**: Linear trend of volume over a 5-period window.
-            - **`volume_price_corr`**: 5-period rolling correlation between volume and mid-price.
-            - **`vwap_deviation`**: Deviation of current mid-price from the volume-weighted average price over 5 periods.
-            - **`order_flow_imbalance`**: Normalized difference between bid and ask depth.
-            - **`cumulative_order_flow`**: Rolling 5-period sum of order flow imbalance.
-            - **`volume_volatility`**: Rolling standard deviation of volume.
-            - **`bs_volatility`**: Volatility of bid-ask spread ratio over 5 periods.
-            - **`bs_momentum`**: 3-period moving average of bid-ask spread changes.
-            - **`volume_ma_interaction`**: Interaction term between volume moving average and a 5-period price moving average.
-            - **`bs_volume_interaction`**:  Interaction term between bid-ask spread ratio and.
+            - **ma3**: 5-period moving average of weighted average price.
+            - **mid_price**:  Average of best bid and best ask prices
+            - **volume_momentum_5**: Percentage change in 5-period volume moving average
+            - **volume_trend**: Linear trend of volume over a 5-period window.
+            - **volume_price_corr**: 5-period rolling correlation between volume and mid-price.
+            - **vwap_deviation**: Deviation of current mid-price from the volume-weighted average price over 5 periods.
+            - **order_flow_imbalance**: Normalized difference between bid and ask depth.
+            - **cumulative_order_flow**: Rolling 5-period sum of order flow imbalance.
+            - **volume_volatility**: Rolling standard deviation of volume.
+            - **bs_volatility**: Volatility of bid-ask spread ratio over 5 periods.
+            - **bs_momentum**: 3-period moving average of bid-ask spread changes.
+            - **volume_ma_interaction**: Interaction term between volume moving average and a 5-period price moving average.
+            - **bs_volume_interaction**:  Interaction term between bid-ask spread ratio and.
 
             ## ⚙️ App Functionality
-            - **Visualisation**: Interactive plots for volatility predictions. 
-            - **Model Diagnostics**: Residual analysis and performance metrics. 
-            - **Performance Evaluation**: Training time, Directional Accuracy Increase and RMSEDecrease to evaluate the impact of volume model.
-            - **Customization**: Option to choose different dataset, time id and features to predict and visualise.
+            - *Visualisation*: Interactive plots for volatility predictions. 
+            - *Model Diagnostics*: Residual analysis and performance metrics. 
+            - *Performance Evaluation*: Training time, Directional Accuracy Increase and RMSEDecrease to evaluate the impact of volume model.
+            - *Customization*: Option to choose different dataset, time id and features to predict and visualise.
             """,
         )
 
-        return ui.div(md, class_="my-3")
+        return ui.div(md, class_="my-1")
+
     
 
 app = App(app_ui, server)
