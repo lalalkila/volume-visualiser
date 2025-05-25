@@ -21,6 +21,7 @@ data = reactive.Value(df)
 base_runtime = reactive.Value(0)
 vol_runtime = reactive.Value(0)
 bucket_size = 30
+time_group_size = 20
 features = [
     'ma5',
     'ma10',
@@ -113,7 +114,7 @@ def server(input, output, session):
             try:
                 print(file_info["datapath"])
                 df = pd.read_csv(file_info["datapath"], delimiter='\t')
-                df['bucket'] = np.floor(df['seconds_in_bucket'] / 20)
+                df['bucket'] = np.floor(df['seconds_in_bucket']/ bucket_size)
                 df = df.groupby(['stock_id', 'time_id', 'bucket']).mean()[['bid_price1','ask_price1','bid_price2','ask_price2','bid_size1','ask_size1','bid_size2', 'ask_size2']].round(4).reset_index()
 
                 # Get all unique stock_ids in the dataframe
@@ -136,7 +137,7 @@ def server(input, output, session):
                 # df_complete = df_complete.iloc[:split_index]
                 # y = y.iloc[:split_index]
 
-                df['time_id_group'] = np.floor(df['time_id'] / 20)
+                df['time_id_group'] = np.floor(df['time_id'] / time_group_size)
 
                 data.set(df)
                 
@@ -186,7 +187,7 @@ def server(input, output, session):
         stock = stock_df()
         if stock.empty or input.timeid() is None:
             return pd.DataFrame(columns=df.columns)
-        stock = stock[stock['time_id_group'] == np.floor(int(input.timeid()) / 20)]
+        stock = stock[stock['time_id_group'] == np.floor(int(input.timeid()) / time_group_size)]
         stock = get_stock_characteristics(stock)
         stock = get_stock_feature(stock)
         stock = get_volume_feature(stock)
