@@ -594,7 +594,7 @@ def server(input, output, session):
 
             ## 🧠 Features Used in the Model
             Our model uses the following engineered features, which capture various dimensions of market activity and price-volume interaction:
-            - **ma3**: 5-period moving average of weighted average price.
+            - **ma5**: 5-period moving average of weighted average price.
             - **mid_price**:  Average of best bid and best ask prices
             - **volume_momentum_5**: Percentage change in 5-period volume moving average
             - **volume_trend**: Linear trend of volume over a 5-period window.
