@@ -8,7 +8,7 @@ import plotly.express as px
 import plotly.subplots as sp
 
 from xgboost import XGBRegressor
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LinearRegression, RidgeCV
 from sklearn.model_selection import train_test_split
 
 # Import data from shared.py
@@ -37,10 +37,10 @@ features = [
 
 BASE_MODEL_FEATURES = ['ma3', 'mid_price']
 VOL_MODEL_FEATURES = ['base_pred',
-                    'volume_momentum_5', 'volume_trend',
+                    'volume_momentum_5', 
                     'volume_price_corr', 'vwap_deviation', 'order_flow_imbalance',
-                    'cumulative_order_flow', 'volume_volatility', 'volume_regime',
-                    'bs_volatility', 'bs_momentum', 'volume_percentile',
+                    'cumulative_order_flow', 'volume_volatility', 
+                    'bs_volatility', 'bs_momentum', 
                     'volume_ma_interaction', 'bs_volume_interaction'
                     ]
 
@@ -221,18 +221,19 @@ def server(input, output, session):
         # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
         y_train_scaled = y_train * 10000
         start = time.time()
-        model = XGBRegressor(
-                                    n_estimators=200,
-                                    max_depth=4,
-                                    learning_rate=0.05,
-                                    subsample=0.8,
-                                    colsample_bytree=0.8,
-                                    reg_alpha=0.1,
-                                    reg_lambda=1.0,
-                                    random_state=42,
-                                    verbosity=0,
-                                    objective='reg:squarederror'
-                                )
+        # model = XGBRegressor(
+        #                             n_estimators=200,
+        #                             max_depth=4,
+        #                             learning_rate=0.05,
+        #                             subsample=0.8,
+        #                             colsample_bytree=0.8,
+        #                             reg_alpha=0.1,
+        #                             reg_lambda=1.0,
+        #                             random_state=42,
+        #                             verbosity=0,
+        #                             objective='reg:squarederror'
+        #                         )
+        model = RidgeCV(alphas=[0.1, 1.0, 10.0])
         # model = LinearRegression()
         model.fit(X_train, y_train_scaled)
         end = time.time()
@@ -268,18 +269,19 @@ def server(input, output, session):
         # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=19)
         y_train_scaled = y_train * 10000
         start = time.time()
-        model = XGBRegressor(
-                                    n_estimators=200,
-                                    max_depth=4,
-                                    learning_rate=0.05,
-                                    subsample=0.8,
-                                    colsample_bytree=0.8,
-                                    reg_alpha=0.1,
-                                    reg_lambda=1.0,
-                                    random_state=42,
-                                    verbosity=0,
-                                    objective='reg:squarederror'
-                                )
+        # model = XGBRegressor(
+        #                             n_estimators=200,
+        #                             max_depth=4,
+        #                             learning_rate=0.05,
+        #                             subsample=0.8,
+        #                             colsample_bytree=0.8,
+        #                             reg_alpha=0.1,
+        #                             reg_lambda=1.0,
+        #                             random_state=42,
+        #                             verbosity=0,
+        #                             objective='reg:squarederror'
+        #                         )
+        model = RidgeCV(alphas=[0.1, 1.0, 10.0])
         model.fit(X_train, y_train_scaled)
         end = time.time()
         vol_runtime.set(end - start)
